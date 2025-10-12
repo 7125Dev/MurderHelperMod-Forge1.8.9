@@ -1,0 +1,119 @@
+buildscript {
+    repositories {
+        jcenter()
+        maven { url = "https://files.minecraftforge.net/maven" }
+        maven { url = "https://repo.spongepowered.org/maven" }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:2.1-SNAPSHOT'
+        classpath 'org.spongepowered:mixingradle:0.6-SNAPSHOT'
+        classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.4'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle.forge'
+apply plugin: 'org.spongepowered.mixin'
+apply plugin: 'com.github.johnrengelman.shadow'
+
+version = "1.0"
+group = "me.dev7125.murderhelper"
+archivesBaseName = "MurderHelperMod"
+
+sourceCompatibility = targetCompatibility = '1.8'
+compileJava {
+    sourceCompatibility = targetCompatibility = '1.8'
+    options.encoding = 'UTF-8'
+}
+
+minecraft {
+    version = "1.8.9-11.15.1.2318-1.8.9"
+    runDir = "run"
+    mappings = "stable_22"
+
+    clientRunArgs = ["--tweakClass", "org.spongepowered.asm.launch.MixinTweaker"]
+}
+
+repositories {
+    maven { url = "https://repo.spongepowered.org/maven" }
+}
+
+configurations {
+    embed
+    compile.extendsFrom(embed)
+}
+
+dependencies {
+    embed('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+        exclude module: 'launchwrapper'
+        exclude module: 'guava'
+        exclude module: 'gson'
+        exclude module: 'commons-io'
+        exclude module: 'log4j-core'
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "mcversion", project.minecraft.version
+
+    from(sourceSets.main.resources.srcDirs) {
+        include 'mcmod.info'
+        expand 'version':project.version, 'mcversion':project.minecraft.version
+    }
+
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+mixin {
+    add sourceSets.main, "murderhelper.refmap.json"
+}
+
+shadowJar {
+    classifier = ''
+    configurations = [project.configurations.embed]
+
+    // 重定位Mixin包以避免冲突
+    relocate 'org.spongepowered.asm.lib', 'me.dev7125.murderhelper.shadow.asm.lib'
+
+    exclude 'dummyThing'
+    exclude 'LICENSE.txt'
+
+    manifest {
+        attributes(
+                "TweakClass": "org.spongepowered.asm.launch.MixinTweaker",
+                "TweakOrder": 0,
+                "MixinConfigs": "mixins.murderhelper.json",
+                "ForceLoadAsMod": true,
+                "FMLCorePluginContainsFMLMod": true
+        )
+    }
+}
+
+// 让reobf任务使用shadowJar
+reobf {
+    shadowJar { mappingType = 'SEARGE' }
+}
+
+// 配置构建流程
+tasks.reobfShadowJar.mustRunAfter shadowJar
+build.dependsOn reobfShadowJar
+
+// 禁用普通的jar任务，只使用shadowJar
+jar {
+    classifier = 'thin'
+    manifest {
+        attributes(
+                "TweakClass": "org.spongepowered.asm.launch.MixinTweaker",
+                "TweakOrder": 0,
+                "MixinConfigs": "mixins.murderhelper.json",
+                "ForceLoadAsMod": true,
+                "FMLCorePluginContainsFMLMod": true
+        )
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}

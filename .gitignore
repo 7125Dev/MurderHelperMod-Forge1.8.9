@@ -1,0 +1,23 @@
+# IntelliJ project files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Build and output directories
+out/
+build/
+classes/
+bin/
+
+# Temporary and generated files
+*.log
+*.tmp
+*.swp
+*.hprof
+*.zip
+
+# Minecraft Forge runtime directories
+run/
+crash-reports/
+logs/

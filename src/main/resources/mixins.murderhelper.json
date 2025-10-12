@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.7.11",
+  "package": "me.dev7125.murderhelper.mixins",
+  "refmap": "murderhelper.refmap.json",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": [
+    "MixinRendererLivingEntity",
+    "MixinNetHandlerPlayClient"
+  ],
+  "client": [
+    "MixinRendererLivingEntity",
+    "MixinNetHandlerPlayClient"
+  ],
+  "server": [],
+  "verbose": true
+}
