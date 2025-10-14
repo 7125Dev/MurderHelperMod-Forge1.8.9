@@ -36,7 +36,7 @@ public class MurderHelperMod {
 
     // ========== 模组信息 ==========
     public static final String MODID = "murderhelper";
-    public static final String VERSION = "1.2";
+    public static final String VERSION = "1.0";
     public static final String NAME = "MurderHelperMod";
 
     // ========== 玩家角色枚举 ==========
@@ -278,6 +278,11 @@ public class MurderHelperMod {
     private void handleRoleChange(String playerName, PlayerRole newRole, ItemStack weapon) {
         // 只对杀手喊话
         if (!config.shoutEnabled || !gameState.isInGame() || newRole != PlayerRole.MURDERER) {
+            return;
+        }
+
+        // 组队模式不喊话队友
+        if (!playerTracker.isEnemy(playerName, gameState.getMyRole())) {
             return;
         }
 
