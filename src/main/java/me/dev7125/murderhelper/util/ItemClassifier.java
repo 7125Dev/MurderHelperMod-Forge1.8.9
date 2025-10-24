@@ -2,6 +2,7 @@ package me.dev7125.murderhelper.util;
 
 import me.dev7125.murderhelper.MurderHelperMod;
 import net.minecraft.item.ItemStack;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -22,6 +23,9 @@ public class ItemClassifier {
 
     // 排除列表（包含凶器关键词但不是凶器的物品）
     private static final Set<String> EXCLUDED_ITEMS = new HashSet<>();
+
+    // 排除特定名称物品
+    private static final Set<Pair<String,String>> EXCLUDED_SPECIAL_ITEMS = new HashSet<>();
 
     static {
         // 初始化凶器列表
@@ -93,6 +97,9 @@ public class ItemClassifier {
 
         // 初始化排除列表（包含凶器关键词但不是凶器的物品）
         EXCLUDED_ITEMS.add("fishing_rod");           // 钓鱼竿（包含fish但不是凶器）
+        EXCLUDED_ITEMS.add("cooked_fish");           // 熟鳕鱼（包含fish但不是凶器）
+        EXCLUDED_ITEMS.add("clownfish");             // 小丑鱼（包含fish但不是凶器）
+        EXCLUDED_ITEMS.add("pufferfish");            // 河豚（包含fish但不是凶器）
         EXCLUDED_ITEMS.add("bookshelf");             // 书架（包含book但不是凶器）
         EXCLUDED_ITEMS.add("book_and_quill");        // 书与笔（包含book但不是凶器）
         EXCLUDED_ITEMS.add("writable_book");         // 书与笔（包含book但不是凶器）
@@ -107,6 +114,11 @@ public class ItemClassifier {
         EXCLUDED_ITEMS.add("blaze_powder");          // 烈焰粉（包含blaze但不是凶器）
         EXCLUDED_ITEMS.add("nether_brick_fence");    // 地狱砖栅栏（包含nether_brick但不是凶器）
         EXCLUDED_ITEMS.add("nether_brick_stairs");   // 地狱砖楼梯（包含nether_brick但不是凶器）
+
+
+        EXCLUDED_SPECIAL_ITEMS.add(Pair.of("iron_sword", "Useless Sword"));     //古墓地图 kali给的诅咒之剑
+        MURDER_WEAPONS.stream().filter(name -> !"iron_sword".equals(name)) //排除掉大部分服务器的铁剑，只保留hypixel特殊的武器皮肤
+                .forEach(murderWeapon -> EXCLUDED_SPECIAL_ITEMS.add(Pair.of(murderWeapon, convertSnakeToTitle(murderWeapon)))); //如果展示名是原minecraft物品名那肯定不是凶器
     }
 
     /**
@@ -129,12 +141,25 @@ public class ItemClassifier {
         String registryName = item.getItem().getRegistryName();
         if (registryName == null) return false;
 
+        String displayName = item.getDisplayName();
+        if (displayName != null && !displayName.isEmpty()) {
+            // 去除所有 Minecraft 颜色代码 (§ + 一个字符)
+            displayName = displayName.replaceAll("§[0-9a-fk-or]", "");
+        }
+
         // 移除 minecraft: 前缀
         String itemName = registryName.replace("minecraft:", "").toLowerCase();
 
         // 步骤0：检查排除列表，如果在排除列表中直接返回false
         if (EXCLUDED_ITEMS.contains(itemName)) {
             return false;
+        }
+
+        // 排除某些地图特殊物品
+        for (Pair<String, String> specialItem : EXCLUDED_SPECIAL_ITEMS) {
+            if(specialItem.getLeft().equals(itemName) && specialItem.getRight().equals(displayName)) {
+                return false;
+            }
         }
 
         // 步骤1：优先精确匹配
@@ -209,6 +234,30 @@ public class ItemClassifier {
 
         // 未知物品 → 返回 null，表示无法确定
         return null;
+    }
+
+    public static String convertSnakeToTitle(String snakeCase) {
+        if (snakeCase == null || snakeCase.isEmpty()) {
+            return snakeCase;
+        }
+
+        // 按下划线分割
+        String[] words = snakeCase.split("_");
+        StringBuilder titleCase = new StringBuilder();
+
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                titleCase.append(" ");
+            }
+            String word = words[i];
+            if (!word.isEmpty()) {
+                // 首字母大写，其余小写
+                titleCase.append(Character.toUpperCase(word.charAt(0)))
+                        .append(word.substring(1).toLowerCase());
+            }
+        }
+
+        return titleCase.toString();
     }
 
     /**
