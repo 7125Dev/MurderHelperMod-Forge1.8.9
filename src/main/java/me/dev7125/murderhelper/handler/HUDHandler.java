@@ -1,6 +1,8 @@
 package me.dev7125.murderhelper.handler;
 
 import me.dev7125.murderhelper.MurderHelperMod;
+import me.dev7125.murderhelper.game.BowShotDetector;
+import me.dev7125.murderhelper.game.KnifeThrownDetector;
 import me.dev7125.murderhelper.render.MurderMysteryHUD;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -22,8 +24,8 @@ public class HUDHandler {
     // 鼠标状态追踪（用于检测点击）
     private boolean lastMousePressed = false;
 
-    public HUDHandler() {
-        this.hud = new MurderMysteryHUD();
+    public HUDHandler(KnifeThrownDetector weaponDetector, BowShotDetector bowShotDetector) {
+        this.hud = new MurderMysteryHUD(weaponDetector, bowShotDetector);
     }
 
     /**
@@ -42,8 +44,7 @@ public class HUDHandler {
         }
 
         // 检查模组是否启用且游戏已开始
-        if (!MurderHelperMod.config.globalEnabled || !MurderHelperMod.gameState.isInGame() ||
-                !MurderHelperMod.isGameActuallyStarted()) {
+        if (!MurderHelperMod.config.globalEnabled || !MurderHelperMod.isGameActuallyStarted()) {
             return;
         }
 

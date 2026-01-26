@@ -135,20 +135,20 @@ public class PlayerTracker {
      * @param myRole 自己的角色
      * @return 是否是敌人
      */
-    public boolean isEnemy(String playerName, String myRole) {
+    public boolean isEnemy(String playerName, MurderHelperMod.PlayerRole myRole) {
         MurderHelperMod.PlayerRole theirRole = getPlayerRole(playerName);
         if (theirRole == null) {
             return false;
         }
 
-        // 如果我是平民或侦探 → 杀手是敌人
-        if (myRole.equals("Innocent") || myRole.equals("Detective")) {
+        // 如果我是平民或侦探或者射手 → 杀手是敌人
+        if (myRole.equals(MurderHelperMod.PlayerRole.INNOCENT) || myRole.equals(MurderHelperMod.PlayerRole.DETECTIVE) || myRole.equals(MurderHelperMod.PlayerRole.SHOOTER)) {
             return theirRole == MurderHelperMod.PlayerRole.MURDERER;
         }
 
-        // 如果我是杀手 → 侦探是敌人
-        if (myRole.equals("Murderer")) {
-            return theirRole == MurderHelperMod.PlayerRole.DETECTIVE;
+        // 如果我是杀手 → 侦探或者射手是敌人
+        if (myRole.equals(MurderHelperMod.PlayerRole.MURDERER)) {
+            return theirRole == MurderHelperMod.PlayerRole.DETECTIVE || theirRole == MurderHelperMod.PlayerRole.SHOOTER;
         }
 
         return false;

@@ -5,12 +5,10 @@
   "refmap": "murderhelper.refmap.json",
   "compatibilityLevel": "JAVA_8",
   "mixins": [
-    "MixinRendererLivingEntity",
-    "MixinNetHandlerPlayClient"
+    "MixinRendererLivingEntity"
   ],
   "client": [
-    "MixinRendererLivingEntity",
-    "MixinNetHandlerPlayClient"
+    "MixinRendererLivingEntity"
   ],
   "server": [],
   "verbose": true

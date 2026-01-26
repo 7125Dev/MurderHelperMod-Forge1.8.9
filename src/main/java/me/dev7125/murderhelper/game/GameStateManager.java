@@ -1,292 +1,180 @@
 package me.dev7125.murderhelper.game;
 
+import me.dev7125.murderhelper.MurderHelperMod;
 import me.dev7125.murderhelper.util.GameConstants;
-import me.dev7125.murderhelper.util.GameStateDetector;
-import net.minecraft.entity.player.EntityPlayer;
 import org.apache.logging.log4j.Logger;
 
 /**
- * 游戏状态管理器（增强版）
- *
- * 职责：
- * - 管理游戏状态（开始、进行中、结束）
- * - 管理状态转换逻辑
- * - 管理延迟机制（传送、游戏结束）
- * - 使用 GameStateDetector 提供的检测能力
+ * 游戏状态管理器（简化版 - 数据包驱动）
  */
 public class GameStateManager {
 
     private final Logger logger;
-    private final GameStateDetector detector;
 
     // ========== 游戏状态 ==========
-    private boolean inGame = false;
-    private boolean gameActuallyStarted = false;
-    private int ticksSinceInGame = 0;
+    private GameState currentState = GameState.IDLE;
+    private long gameStartTime = 0;
+    private MurderHelperMod.PlayerRole myRole = MurderHelperMod.PlayerRole.INNOCENT;
 
-    // ========== 游戏结束检测 ==========
-    private int gameEndDelayTicks = 0;
-    private int separatorLineCount = 0;
-    private long lastSeparatorTime = 0;
+    // ========== 角色检测延迟 ==========
+    private int roleCheckDelayTicks = 0;
+    private boolean roleCheckEnabled = false;
 
-    // ========== 传送检测 ==========
-    private boolean justTeleported = false;
-    private int teleportDelayTicks = 0;
+    // ========== 状态锁定机制（防止数据包抖动） ==========
+    private long stateLockedUntil = 0;
+    private static final long STATE_LOCK_DURATION = 3000; // 游戏开始后3秒内锁定状态
 
-    // ========== 角色信息 ==========
-    private String myRole = "Innocent";
+    public enum GameState {
+        IDLE,           // 空闲状态（不在游戏中）
+        PREPARING,      // 准备阶段（在游戏地图但未开始）
+        PLAYING         // 游戏进行中
+    }
 
     public GameStateManager(Logger logger) {
         this.logger = logger;
-        this.detector = GameStateDetector.getInstance();
+    }
+
+    // ==================== 数据包事件回调 ====================
+
+    /**
+     * 游戏开始（收到 nameTagVisibility = "never"）
+     */
+    public void onGameStart() {
+        // 防止重复触发
+        if (currentState == GameState.PLAYING) {
+            logger.debug("[IGNORED] Duplicate game start signal");
+            return;
+        }
+
+        currentState = GameState.PLAYING;
+        gameStartTime = System.currentTimeMillis();
+        roleCheckEnabled = true;
+        roleCheckDelayTicks = GameConstants.GAME_START_ROLE_CHECK_DELAY_TICKS;
+
+        // 锁定状态，防止后续的 PREPARING 数据包干扰
+        stateLockedUntil = System.currentTimeMillis() + STATE_LOCK_DURATION;
+
+        logger.info("=== GAME STARTED ===");
+    }
+
+    /**
+     * 游戏准备阶段（收到 nameTagVisibility = "always"）
+     */
+    public void onGamePreparing() {
+        // 检查是否在状态锁定期内
+        if (isStateLocked()) {
+            logger.debug("[IGNORED] Game preparing signal (state locked, probably server packet spam)");
+            return;
+        }
+
+        // 防止重复触发
+        if (currentState == GameState.PREPARING) {
+            return;
+        }
+
+        currentState = GameState.PREPARING;
+        logger.info("=== GAME PREPARING ===");
+    }
+
+    /**
+     * 游戏重置（收到 S01PacketJoinGame）
+     */
+    public void onGameReset() {
+        gameStartTime = 0;
+        myRole = MurderHelperMod.PlayerRole.INNOCENT;
+        roleCheckEnabled = false;
+        roleCheckDelayTicks = 0;
+        stateLockedUntil = 0; // 清除状态锁定
+
+        logger.info("=== GAME DATA RESET ===");
     }
 
     // ==================== 状态查询 ====================
 
     /**
-     * 是否在游戏中
+     * 检查状态是否被锁定
+     */
+    private boolean isStateLocked() {
+        return System.currentTimeMillis() < stateLockedUntil;
+    }
+
+    /**
+     * 是否在游戏中（准备阶段或游戏中）
      */
     public boolean isInGame() {
-        return inGame;
+        return currentState == GameState.PREPARING || currentState == GameState.PLAYING;
     }
 
     /**
      * 游戏是否真正开始（已分配角色）
      */
     public boolean isGameActuallyStarted() {
-        return gameActuallyStarted;
+        return currentState == GameState.PLAYING;
+    }
+
+    /**
+     * 是否应该检测角色（游戏开始后的延迟）
+     */
+    public boolean shouldCheckRoles() {
+        return roleCheckEnabled && roleCheckDelayTicks <= 0;
+    }
+
+    /**
+     * 获取当前状态
+     */
+    public GameState getCurrentState() {
+        return currentState;
+    }
+
+    /**
+     * 获取游戏运行时间（毫秒）
+     */
+    public long getGameDuration() {
+        if (currentState != GameState.PLAYING || gameStartTime == 0) {
+            return 0;
+        }
+        return System.currentTimeMillis() - gameStartTime;
+    }
+
+    /**
+     * 获取游戏运行时间（格式化字符串）
+     */
+    public String getGameDurationFormatted() {
+        long duration = getGameDuration();
+        long seconds = duration / 1000;
+        long minutes = seconds / 60;
+        seconds = seconds % 60;
+        return String.format("%d:%02d", minutes, seconds);
     }
 
     /**
      * 获取自己的角色
      */
-    public String getMyRole() {
+    public MurderHelperMod.PlayerRole getMyRole() {
         return myRole;
     }
 
     /**
      * 设置自己的角色
      */
-    public void setMyRole(String role) {
+    public void setMyRole(MurderHelperMod.PlayerRole role) {
         if (!myRole.equals(role)) {
             myRole = role;
-            logger.info("My role changed to: " + myRole);
+            logger.info("My role: " + myRole);
         }
     }
 
-    /**
-     * 获取游戏开始后的tick数
-     */
-    public int getTicksSinceInGame() {
-        return ticksSinceInGame;
-    }
+    // ==================== Tick更新（主线程调用） ====================
 
     /**
-     * 是否刚刚传送
-     */
-    public boolean isJustTeleported() {
-        return justTeleported;
-    }
-
-    // ==================== 状态管理 ====================
-
-    /**
-     * 设置游戏状态
-     */
-    public void setInGame(boolean inGame) {
-        if (this.inGame != inGame) {
-            this.inGame = inGame;
-            logger.info("Murder Mystery game status changed: " + inGame);
-
-            // 如果离开游戏，重置游戏开始标志
-            if (!inGame) {
-                gameActuallyStarted = false;
-                ticksSinceInGame = 0;
-            }
-        }
-    }
-
-    /**
-     * 检测并更新游戏状态（是否在游戏中）
-     * 使用 GameStateDetector 提供的检测能力
-     */
-    public void updateInGameStatus() {
-        boolean detectorSaysInGame = detector.isInMurderMystery();
-
-        // 如果游戏已经真正开始，锁定状态
-        if (gameActuallyStarted) {
-            if (!inGame) {
-                setInGame(true);
-                logger.debug("Game status locked to true (game already started)");
-            }
-        } else {
-            // 游戏还没真正开始，跟随检测器
-            if (detectorSaysInGame != inGame) {
-                setInGame(detectorSaysInGame);
-            }
-        }
-    }
-
-    /**
-     * 触发游戏真正开始
-     */
-    public void triggerGameStart(String reason) {
-        if (!gameActuallyStarted) {
-            logger.info("Game actually started! Reason: " + reason);
-            gameActuallyStarted = true;
-            ticksSinceInGame = 0;
-        }
-    }
-
-    /**
-     * 检测并触发游戏开始
-     * 使用 GameStateDetector 检测开始条件，加上超时逻辑
-     */
-    public boolean checkAndTriggerGameStart(EntityPlayer localPlayer, int roleSlotIndex) {
-        if (gameActuallyStarted) {
-            return false; // 已经开始了
-        }
-
-        // 使用检测器检查游戏开始条件
-        GameStateDetector.GameStartCondition condition =
-                detector.checkGameStartConditions(localPlayer, roleSlotIndex);
-
-        if (condition.shouldStart()) {
-            triggerGameStart(condition.getReason());
-            return true;
-        }
-
-        // 超时检测（这是状态管理逻辑，不是检测逻辑）
-        if (ticksSinceInGame >= GameConstants.GAME_START_TIMEOUT_TICKS) {
-            triggerGameStart("Timeout - assuming game started (I'm Innocent)");
-            return true;
-        }
-
-        return false;
-    }
-
-    // ==================== 聊天消息处理 ====================
-
-    /**
-     * 处理聊天消息
-     * 使用 GameStateDetector 识别消息类型，然后决定如何处理
-     */
-    public void processChatMessage(String message, String formattedMessage) {
-        GameStateDetector.ChatMessageType type =
-                detector.detectChatMessageType(message, formattedMessage);
-
-        switch (type) {
-            case TELEPORTING:
-                handleTeleport();
-                break;
-
-            case SEPARATOR_LINE:
-                handleSeparatorLine();
-                break;
-
-            case GAME_ENDING:
-                if (inGame && gameActuallyStarted) {
-                    handleGameEnd("Game summary screen");
-                }
-                break;
-
-            case AUTO_QUEUE:
-                if (inGame && gameActuallyStarted) {
-                    handleGameEnd("Auto-queue message");
-                }
-                break;
-
-            case NORMAL:
-            default:
-                // 普通消息，不处理
-                break;
-        }
-    }
-
-    /**
-     * 处理传送
-     */
-    private void handleTeleport() {
-        logger.info("Detected teleport to new game");
-        justTeleported = true;
-        teleportDelayTicks = GameConstants.TELEPORT_DELAY_TICKS;
-    }
-
-    /**
-     * 处理分隔符（游戏结束判断）
-     */
-    private void handleSeparatorLine() {
-        long now = System.currentTimeMillis();
-        if (now - lastSeparatorTime < 2000) {
-            separatorLineCount++;
-            if (separatorLineCount >= 2) {
-                handleGameEnd("Multiple separator lines");
-                separatorLineCount = 0;
-            }
-        } else {
-            separatorLineCount = 1;
-        }
-        lastSeparatorTime = now;
-    }
-
-    /**
-     * 处理游戏结束
-     */
-    private void handleGameEnd(String reason) {
-        logger.info("Game ended detected: " + reason);
-        gameEndDelayTicks = GameConstants.GAME_END_DELAY_TICKS;
-    }
-
-    // ==================== Tick更新 ====================
-
-    /**
-     * 每tick更新（在ClientTickEvent中调用）
+     * 每tick更新
      */
     public void tick() {
-        // 处理传送延迟
-        if (justTeleported && teleportDelayTicks > 0) {
-            teleportDelayTicks--;
-            if (teleportDelayTicks == 0) {
-                logger.info("Teleport delay finished");
-                justTeleported = false;
-            }
-        }
-
-        // 处理游戏结束延迟
-        if (gameEndDelayTicks > 0) {
-            gameEndDelayTicks--;
-            if (gameEndDelayTicks == 0) {
-                logger.info("Resetting game state after game end delay");
-                gameActuallyStarted = false;
-                inGame = false;
-            }
-        }
-
-        // 增加tick计数
-        if (inGame && !gameActuallyStarted) {
-            ticksSinceInGame++;
-        }
-    }
-
-    /**
-     * 检查是否应该跳过tick（传送期间或游戏结束延迟期间）
-     */
-    public boolean shouldSkipTick() {
-        return (justTeleported && teleportDelayTicks > 0) || gameEndDelayTicks > 0;
-    }
-
-    /**
-     * 处理传送延迟结束后的状态更新
-     */
-    public void handleTeleportComplete() {
-        if (justTeleported && !shouldSkipTick()) {
-            // 传送完成后，强制重新检测
-            boolean detectorResult = detector.isInMurderMystery();
-            if (detectorResult) {
-                logger.debug("Detected in game after teleport");
-                setInGame(true);
-            } else {
-                logger.debug("Not in game after teleport, will keep checking");
+        // 处理角色检测延迟
+        if (roleCheckDelayTicks > 0) {
+            roleCheckDelayTicks--;
+            if (roleCheckDelayTicks == 0) {
+                logger.debug("Role check delay finished, starting role detection");
             }
         }
     }
@@ -294,18 +182,24 @@ public class GameStateManager {
     // ==================== 重置 ====================
 
     /**
-     * 重置所有状态（世界卸载或断开连接时调用）
+     * 完全重置（断开连接时）
      */
     public void reset() {
-        inGame = false;
-        gameActuallyStarted = false;
-        ticksSinceInGame = 0;
-        gameEndDelayTicks = 0;
-        separatorLineCount = 0;
-        lastSeparatorTime = 0;
-        justTeleported = false;
-        teleportDelayTicks = 0;
-        myRole = "Innocent";
-        logger.info("GameStateManager reset!");
+        onGameReset();
+        logger.info("GameStateManager fully reset!");
+    }
+
+    // ==================== 调试信息 ====================
+
+    /**
+     * 获取当前状态的调试信息
+     */
+    public String getDebugInfo() {
+        return String.format("State: %s, Duration: %s, Role: %s, Locked: %s",
+                currentState,
+                getGameDurationFormatted(),
+                myRole,
+                isStateLocked() ? "YES" : "NO"
+        );
     }
 }

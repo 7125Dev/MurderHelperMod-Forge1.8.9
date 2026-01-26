@@ -1,6 +1,77 @@
-# Minecraft Forge Mod - Build Guide
+# Murder Mystery Helper Mod
 
-This guide will help you set up your development environment and compile this Minecraft mod using Forge 1.8.9.
+A comprehensive Minecraft mod designed to enhance the Murder Mystery gameplay experience with advanced detection, tracking, and visualization features.
+
+## Features
+
+### 🎮 Game Detection & Tracking
+- **Automatic Game State Detection**: Packet-based detection system that automatically identifies game start/end without manual commands
+- **Advanced Player Role Detection**: Accurately identifies and tracks:
+    - Murderers (with knife detection)
+    - Detectives (with detective bow detection)
+    - Shooters (civilians with bows)
+    - Suspects (players near corpses)
+    - Innocent civilians
+
+### 🔪 Weapon Detection System
+- **Knife Tracking**: Real-time detection of murderer's knife with states:
+    - Holding/Not Holding status
+    - In-Flight detection when thrown
+    - Cooldown timer tracking
+    - Ready state indicator
+
+- **Bow Classification & Tracking**: Distinguishes between three bow types:
+    - **Detective Bow**: Infinite arrows with cooldown timer
+    - **Kali Bow**: Infinite arrows from Kali blessing (no cooldown)
+    - **Normal Bow**: Standard bow obtained from gold coins
+
+- **Bow State Detection**:
+    - Holding/Not Holding status
+    - Drawing state
+    - Charged/Ready to shoot indicator
+    - Cooldown timer for detective bows
+
+### 🎯 Enhanced HUD Display
+- **Real-time Player Information**:
+    - Player name and head avatar
+    - Role identification with color coding
+    - Weapon status and type
+    - Distance tracking with color-coded threat levels
+    - Player coordinates
+
+- **Proximity Alerts**:
+    - Flying knife distance warning
+    - Incoming arrow distance warning
+    - Color-coded danger levels (Safe/Watch/Alert/DANGER)
+
+- **Customizable Interface**:
+    - Draggable window position
+    - Adjustable background opacity slider
+    - Auto-resizing based on content
+
+### 🕵️ Suspect Detection System
+- Automatically marks players as suspects who appear within 10 blocks of a corpse within 5 seconds of death
+- Smart filtering to exclude:
+    - Dead/invisible players
+    - Confirmed detectives
+    - Confirmed murderers
+- Auto-clears suspects when murderer is identified
+
+### 🎨 Visual Enhancements
+- **Color-Coded Nametags**:
+    - Red: Murderer
+    - Blue: Detective
+    - Orange: Shooter
+    - Yellow: Suspect
+    - Green: Innocent
+
+- **Bow Drop Visualization**: Shows dropped bow locations with type-specific colors
+- **Corpse Detection**: Real-time corpse position tracking
+
+### 📦 Advanced Packet System
+- Custom packet interceptor for precise game event detection
+- Annotation-based packet listener system
+- Connection event handling for automatic initialization
 
 ## Prerequisites
 
@@ -15,6 +86,7 @@ Before you begin, ensure you have the following installed:
 This mod is built using:
 - **Forge Version**: 1.8.9-11.15.1.2318-1.8.9
 - **Minecraft Version**: 1.8.9
+- **Mixins**: Required for advanced features
 
 ## Setup Instructions
 
@@ -25,34 +97,34 @@ This mod is built using:
 1. **Extract the mod files** to your desired location
 2. **Open a terminal/command prompt** in the mod directory
 3. **Run the setup command**:
-   
+
    On Windows:
-   ```bash
+```bash
    gradlew setupDecompWorkspace
-   ```
-   
-   On Linux/Mac:
-   ```bash
+```
+
+On Linux/Mac:
+```bash
    ./gradlew setupDecompWorkspace
-   ```
-   
-   This process will take several minutes as it downloads dependencies and decompiles Minecraft.
+```
+
+This process will take several minutes as it downloads dependencies and decompiles Minecraft.
 
 4. **Generate IDE files**:
-   ```bash
+```bash
    gradlew idea
-   ```
+```
 
 5. **Open the project** in IntelliJ IDEA:
-   - Launch IntelliJ IDEA
-   - Select "Open" and navigate to your mod folder
-   - Open the project
+    - Launch IntelliJ IDEA
+    - Select "Open" and navigate to your mod folder
+    - Open the project
 
 6. **Configure the run configurations**:
-   - IntelliJ should automatically detect the Gradle project
-   - Go to Run → Edit Configurations
-   - You should see "Minecraft Client" and "Minecraft Server" configurations
-   - If not, you can create them manually using the Gradle tasks
+    - IntelliJ should automatically detect the Gradle project
+    - Go to Run → Edit Configurations
+    - You should see "Minecraft Client" and "Minecraft Server" configurations
+    - If not, you can create them manually using the Gradle tasks
 
 #### Building the Mod
 
@@ -60,9 +132,9 @@ To build your mod in IntelliJ IDEA:
 
 1. Open the terminal in IDEA (View → Tool Windows → Terminal)
 2. Run the build command:
-   ```bash
+```bash
    gradlew build
-   ```
+```
 3. The compiled mod JAR file will be located in `build/libs/`
 
 ### Option 2: Eclipse
@@ -72,34 +144,32 @@ To build your mod in IntelliJ IDEA:
 1. **Extract the mod files** to your desired location
 2. **Open a terminal/command prompt** in the mod directory
 3. **Run the setup command**:
-   
+
    On Windows:
-   ```bash
+```bash
    gradlew setupDecompWorkspace
-   ```
-   
-   On Linux/Mac:
-   ```bash
+```
+
+On Linux/Mac:
+```bash
    ./gradlew setupDecompWorkspace
-   ```
-   
-   This process will take several minutes as it downloads dependencies and decompiles Minecraft.
+```
 
 4. **Generate Eclipse workspace**:
-   ```bash
+```bash
    gradlew eclipse
-   ```
+```
 
 5. **Import the project into Eclipse**:
-   - Launch Eclipse
-   - Select File → Import
-   - Choose "Existing Projects into Workspace"
-   - Browse to your mod folder and select it
-   - Click Finish
+    - Launch Eclipse
+    - Select File → Import
+    - Choose "Existing Projects into Workspace"
+    - Browse to your mod folder and select it
+    - Click Finish
 
 6. **Refresh the project**:
-   - Right-click on the project in Eclipse
-   - Select "Refresh" or press F5
+    - Right-click on the project in Eclipse
+    - Select "Refresh" or press F5
 
 #### Building the Mod
 
@@ -107,9 +177,9 @@ To build your mod in Eclipse:
 
 1. Open a terminal/command prompt in your project directory
 2. Run the build command:
-   ```bash
+```bash
    gradlew build
-   ```
+```
 3. The compiled mod JAR file will be located in `build/libs/`
 
 ## Running the Mod
@@ -141,6 +211,67 @@ To build your mod in Eclipse:
 - `gradlew runClient` - Runs the Minecraft client
 - `gradlew runServer` - Runs the Minecraft server
 
+## Project Structure
+
+The mod follows a standard Forge mod structure with organized packages:
+```
+src/main/java/me/dev7125/murderhelper/
+├── config/               # Configuration management
+│   └── ModConfig.java
+├── core/                 # Core systems
+│   ├── annotation/
+│   │   └── PacketListener.java
+│   └── listener/
+│       ├── ConnectionEventHandler.java
+│       ├── MurderMysteryGameListener.java
+│       ├── PacketInterceptor.java
+│       └── PacketListenerRegistry.java
+├── feature/              # Core gameplay features
+│   ├── AlarmSystem.java
+│   └── ShoutMessageBuilder.java
+├── game/                 # Game state and detection
+│   ├── BowShotDetector.java
+│   ├── CorpseDetector.java
+│   ├── GameStateManager.java
+│   ├── KnifeThrownDetector.java
+│   ├── PlayerTracker.java
+│   ├── RoleDetector.java
+│   └── SuspectTracker.java
+├── gui/                  # Graphical user interface
+│   ├── ConfigGUI.java
+│   └── ModGuiFactory.java
+├── handler/              # Event handlers
+│   ├── BowDropTracker.java
+│   ├── HUDHandler.java
+│   └── RenderHandler.java
+├── mixins/               # Mixin implementations
+│   └── MixinRendererLivingEntity.java
+├── render/               # Rendering components
+│   ├── BowDropRenderer.java
+│   ├── MurderMysteryHUD.java
+│   └── NametagRenderer.java
+├── util/                 # Utility classes
+│   ├── GameConstants.java
+│   └── ItemClassifier.java
+└── MurderHelperMod.java  # Main mod class
+
+src/main/resources/
+├── mcmod.info            # Mod metadata
+└── mixins.murderhelper.json  # Mixin configuration
+```
+
+### Package Description
+
+- **config**: Handles mod configuration and settings
+- **core**: Core packet interception and event listening systems
+- **feature**: Implements core gameplay features and mechanics
+- **game**: Advanced detection systems for game state, roles, weapons, and suspects
+- **gui**: Provides configuration GUI and user interface elements
+- **handler**: Event handlers for various game events
+- **mixins**: Mixin classes for modifying vanilla Minecraft behavior
+- **render**: Custom rendering logic for HUD, entities, and overlays
+- **util**: Helper classes and constants used throughout the mod
+
 ## Troubleshooting
 
 ### "Java version mismatch" error
@@ -167,71 +298,33 @@ org.gradle.jvmargs=-Xmx3G
 - Make sure to rebuild the project before launching
 - Clean and rebuild if necessary: `gradlew clean build`
 
+### Mixin issues
+- Ensure `mixins.murderhelper.json` is properly configured
+- Check that the mixin dependency is included in `build.gradle`
+- Verify Mixin plugin is loaded correctly in Forge
+
+## Configuration
+
+The mod includes an in-game configuration GUI accessible through the Minecraft Mod Options menu. Configuration options include:
+
+- HUD position and opacity
+- Color schemes for different roles
+- Alarm system settings
+- Proximity warning thresholds
+
 ## Additional Resources
 
 - [Forge Documentation](http://mcforge.readthedocs.io/en/latest/)
 - [Forge Forums](http://www.minecraftforge.net/forum/)
 - [Gradle Documentation](https://docs.gradle.org/)
-
-## Project Structure
-
-The mod follows a standard Forge mod structure with organized packages:
-
-```
-src/main/java/me/dev7125/murderhelper/
-├── command/              # Command implementations
-│   └── MurderHelperCommands.java
-├── config/               # Configuration management
-│   └── ModConfig.java
-├── feature/              # Core gameplay features
-│   ├── AlarmSystem.java
-│   └── ShoutMessageBuilder.java
-├── game/                 # Game state and player management
-│   ├── GameStateManager.java
-│   ├── PlayerTracker.java
-│   └── RoleDetector.java
-├── gui/                  # Graphical user interface
-│   ├── ConfigGUI.java
-│   └── ModGuiFactory.java
-├── handler/              # Event handlers
-│   ├── BowDropTracker.java
-│   ├── HUDHandler.java
-│   └── RenderHandler.java
-├── mixins/               # Mixin implementations
-│   ├── MixinNetHandlerPlayClient.java
-│   └── MixinRendererLivingEntity.java
-├── render/               # Rendering components
-│   ├── BowDropRenderer.java
-│   ├── MurderMysteryHUD.java
-│   └── NametagRenderer.java
-├── util/                 # Utility classes
-│   ├── GameConstants.java
-│   ├── GameStateDetector.java
-│   └── ItemClassifier.java
-└── MurderHelperMod.java  # Main mod class
-
-src/main/resources/
-├── mcmod.info            # Mod metadata
-└── mixins.murderhelper.json  # Mixin configuration
-```
-
-### Package Description
-
-- **command**: Contains all custom commands for the mod
-- **config**: Handles mod configuration and settings
-- **feature**: Implements core gameplay features and mechanics
-- **game**: Manages game state detection and player tracking
-- **gui**: Provides configuration GUI and user interface elements
-- **handler**: Event handlers for various game events
-- **mixins**: Mixin classes for modifying vanilla Minecraft behavior
-- **render**: Custom rendering logic for HUD, entities, and overlays
-- **util**: Helper classes and constants used throughout the mod
+- [Mixin Documentation](https://github.com/SpongePowered/Mixin/wiki)
 
 ## Development Notes
 
-- This mod uses **Mixins** for some features - make sure the mixin configuration is properly set up
-- The mod is designed for **Murder Mystery** game mode
-- Main entry point is `MurderHelperMod.java` - this is where the mod initializes
+- This mod uses **Mixins** for advanced features - ensure mixin configuration is properly set up
+- The mod is specifically designed for **Murder Mystery** game mode on Hypixel
+- Main entry point is `MurderHelperMod.java`
+- All detection systems run automatically without manual intervention
 - Configuration is saved in the Minecraft config folder
 
 ## Notes
@@ -240,9 +333,25 @@ src/main/resources/
 - If you switch between IDEs, you may need to run the setup command again
 - Keep your workspace separate from your Minecraft installation directory
 - The first build will take longer as dependencies are downloaded
-- Make sure to include all required dependencies in your `build.gradle` file
 - When adding new Mixins, update `mixins.murderhelper.json` accordingly
+- The mod includes comprehensive packet interception - ensure you understand the packet system before modifying
+
+## Version History
+
+### Latest Version
+- ✨ Refactored game state detection with packet-based system
+- ✨ Implemented advanced weapon detection with zero false positives
+- ✨ Added comprehensive role detection (Murderer, Detective, Shooter, Suspect, Innocent)
+- ✨ Introduced bow classification system (Detective, Kali, Normal)
+- ✨ Added suspect detection system based on corpse proximity
+- ✨ Enhanced HUD with detailed weapon states and cooldown tracking
+- ✨ Added proximity alerts for flying knives and arrows
+- ✨ Removed manual game start commands - now fully automatic
+- ✨ Improved nametag and bow drop visual rendering
 
 ---
 
+**Developed for Minecraft 1.8.9 Forge**
+
 Happy modding!
+```

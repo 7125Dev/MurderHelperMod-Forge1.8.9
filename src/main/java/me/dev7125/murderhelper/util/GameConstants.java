@@ -159,7 +159,13 @@ public class GameConstants {
      * Minecraft 每秒 Tick 数
      */
     public static final int TICKS_PER_SECOND = 20;
-    
+
+    /**
+     * 游戏开始后延迟多少tick才开始检测角色（避免误判）
+     * 20 ticks = 1秒
+     */
+    public static final int GAME_START_ROLE_CHECK_DELAY_TICKS = 20;
+
     /**
      * 将秒转换为 ticks
      */

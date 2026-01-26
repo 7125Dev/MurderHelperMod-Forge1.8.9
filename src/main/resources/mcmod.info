@@ -2,7 +2,7 @@
 {
   "modid": "murderhelper",
   "name": "MurderHelperMod",
-"description": "A helper mod for Murder Mystery game mode with role detection, enemy alerts, automatic callouts, and manual control commands (/mh) for servers with or without maps.",  "version": "1.0",
+"description": "A helper mod for Murder Mystery game mode with role detection, enemy alerts, automatic callouts",  "version": "1.0.3",
   "mcversion": "1.8.9",
   "url": "",
   "updateUrl": "",

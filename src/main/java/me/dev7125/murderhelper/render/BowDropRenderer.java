@@ -92,12 +92,12 @@ public class BowDropRenderer {
         
         // 启用纹理以绘制文字
         GlStateManager.enableTexture2D();
-        
-        // 设置橙色 (RGB: 255, 165, 0)
-        int orangeColor = 0xFFA500;
+
+        // 设置黄色 (RGB: 255, 255, 0)
+        int yellowColor = 0xFFFF55 ;
         
         // 绘制文字（带阴影效果）
-        fontRenderer.drawString(text, -halfWidth, 0, orangeColor, true);
+        fontRenderer.drawString(text, -halfWidth, 0, yellowColor, true);
         
         // 恢复深度测试
         GL11.glEnable(GL11.GL_DEPTH_TEST);

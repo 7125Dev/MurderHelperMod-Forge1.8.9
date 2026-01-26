@@ -33,7 +33,8 @@ public class RoleDetector {
 
     /**
      * 检测自己的角色（通过 roleSlotIndex 槽位）
-     * @param localPlayer 本地玩家
+     *
+     * @param localPlayer   本地玩家
      * @param roleSlotIndex 角色槽位索引
      */
     public void detectMyRole(EntityPlayer localPlayer, int roleSlotIndex) {
@@ -46,26 +47,57 @@ public class RoleDetector {
 
         lastRoleSlotItem = roleSlotItem;
 
-        String newRole;
-        if (roleSlotItem == null) {
-            // 槽位是空的 → 平民
-            newRole = "Innocent";
-        } else if (ItemClassifier.isMurderWeapon(roleSlotItem)) {
-            // 优先检测凶器 → 杀手
-            newRole = "Murderer";
-        } else if (ItemClassifier.isBow(roleSlotItem)) {
-            // 然后检测弓 → 侦探
-            newRole = "Detective";
-        } else {
-            // 其他情况 → 平民
-            newRole = "Innocent";
+        MurderHelperMod.PlayerRole currentRole = gameState.getMyRole();
+
+        // 侦探和凶手角色一旦确定就不再改变（除非游戏重置）
+        if (currentRole == MurderHelperMod.PlayerRole.DETECTIVE ||
+                currentRole == MurderHelperMod.PlayerRole.MURDERER) {
+            return;
         }
 
-        gameState.setMyRole(newRole);
+        MurderHelperMod.PlayerRole newRole;
+
+        // 优先检测凶器（凶器和弓互斥，先检测凶器）
+        if (ItemClassifier.isMurderWeapon(roleSlotItem)) {
+            newRole = MurderHelperMod.PlayerRole.MURDERER;
+        } else {
+            // 检测弓的类型
+            ItemClassifier.BowCategory bowCategory = ItemClassifier.getBowCategory(roleSlotItem);
+
+            switch (bowCategory) {
+                case DETECTIVE_BOW:
+                    // 服务器派发侦探弓，锁定为侦探
+                    newRole = MurderHelperMod.PlayerRole.DETECTIVE;
+                    break;
+
+                case NORMAL_BOW:
+                case KALI_BOW:
+                    // 只有无辜者获得弓才升级为射手
+                    // 如果已经是射手，保持射手身份
+                    newRole = currentRole == MurderHelperMod.PlayerRole.INNOCENT
+                            ? MurderHelperMod.PlayerRole.SHOOTER
+                            : currentRole;
+                    break;
+
+                case NONE:
+                default:
+                    // 没有检测到角色物品，默认为无辜者
+                    // （游戏开始时或槽位为空/非角色物品时）
+                    newRole = MurderHelperMod.PlayerRole.INNOCENT;
+                    break;
+            }
+        }
+
+        // 只有角色真正改变时才更新并记录日志
+        if (newRole != currentRole) {
+            gameState.setMyRole(newRole);
+            logger.info("My role changed to: " + newRole);
+        }
     }
 
     /**
      * 检测玩家手持物品并更新角色
+     *
      * @param player 玩家实体
      * @return 是否检测到角色变化
      */
@@ -95,8 +127,9 @@ public class RoleDetector {
      * 1. 凶手锁定优先级最高 - 一旦锁定为凶手，永远是凶手
      * 2. 侦探锁定次之 - 如果未被锁定为凶手，锁定为侦探后永远是侦探
      * 3. 凶器检测优先级高于弓箭 - 先检测凶器再检测弓箭
+     *
      * @param playerName 玩家名字
-     * @param heldItem 手持物品
+     * @param heldItem   手持物品
      */
     private void updatePlayerRole(String playerName, ItemStack heldItem) {
         // 【最高优先级】如果已经被锁定为凶手，无论后续持有什么物品都是凶手
@@ -133,23 +166,15 @@ public class RoleDetector {
         // 【凶手锁定】如果检测到凶器，立即锁定为凶手（最高优先级）
         if (newRole == MurderHelperMod.PlayerRole.MURDERER) {
             playerTracker.lockMurderer(playerName);
-
-            if (heldItem != null) {
-                playerTracker.recordPlayerWeapon(playerName, heldItem);
-            }
-
-            logger.info("Player " + playerName + " LOCKED as MURDERER! (Priority: Murder Weapon)");
+            playerTracker.recordPlayerWeapon(playerName, heldItem);
+            logger.info("Player " + playerName + " LOCKED as MURDERER!");
         }
 
-        // 【侦探锁定】如果检测到弓箭且未被锁定为凶手，锁定为侦探
+        // 【侦探锁定】如果检测到侦探弓且未被锁定为凶手，锁定为侦探
         if (newRole == MurderHelperMod.PlayerRole.DETECTIVE) {
             playerTracker.lockDetective(playerName);
-
-            if (heldItem != null) {
-                playerTracker.recordPlayerWeapon(playerName, heldItem);
-            }
-
-            logger.info("Player " + playerName + " LOCKED as DETECTIVE! (Priority: Bow)");
+            playerTracker.recordPlayerWeapon(playerName, heldItem);
+            logger.info("Player " + playerName + " LOCKED as DETECTIVE!");
         }
 
         if (newRole != oldRole) {
@@ -161,10 +186,19 @@ public class RoleDetector {
         }
     }
 
+
     /**
      * 按优先级判断角色
-     * 优先级：凶器 > 弓箭 > 其他
-     * 确保凶器的检测永远在弓箭之前
+     * 优先级：凶器 > 侦探弓 > 普通弓/Kali弓 > 其他
+     *
+     * 注意：此方法用于判断其他玩家的角色
+     * 重要：此方法被调用时，玩家已确保未被锁定为侦探或凶手
+     * （锁定检查在 updatePlayerRole 开头已完成）
+     *
+     * - 凶器：凶手（会被锁定）
+     * - 侦探弓：侦探（会被锁定）
+     * - 普通弓/Kali弓：射手（无辜者拾取金锭或Kali祝福获得，或已经是射手）
+     * - 其他：无法判断，返回 null
      */
     private MurderHelperMod.PlayerRole determinePlayerRoleWithPriority(ItemStack item) {
         if (item == null) {
@@ -176,22 +210,26 @@ public class RoleDetector {
             return MurderHelperMod.PlayerRole.MURDERER;
         }
 
-        // 第二优先级：检测弓箭
-        if (ItemClassifier.isBow(item)) {
-            return MurderHelperMod.PlayerRole.DETECTIVE;
+        // 第二优先级：检测弓箭类型
+        ItemClassifier.BowCategory bowCategory = ItemClassifier.getBowCategory(item);
+
+        switch (bowCategory) {
+            case DETECTIVE_BOW:
+                // 侦探弓：判定为侦探（会被锁定）
+                return MurderHelperMod.PlayerRole.DETECTIVE;
+
+            case NORMAL_BOW:
+            case KALI_BOW:
+                // 普通弓/Kali弓：判定为射手
+                // 执行到这里时玩家肯定未被锁定为侦探（已在updatePlayerRole开头拦截）
+                // 所以只可能是：无辜者获得弓 → 射手，或者已经是射手
+                return MurderHelperMod.PlayerRole.SHOOTER;
+
+            case NONE:
+            default:
+                // 不是弓也不是凶器，无法判断角色
+                return null;
         }
-
-        // 其他情况：无法判断，返回 null 保持当前状态
-        return null;
-    }
-
-    /**
-     * 根据当前物品判断角色
-     * 使用 ItemClassifier 进行判断
-     * @deprecated 使用 determinePlayerRoleWithPriority 代替以确保优先级正确
-     */
-    private MurderHelperMod.PlayerRole determinePlayerRole(ItemStack item) {
-        return ItemClassifier.determineRole(item);
     }
 
     /**
@@ -206,6 +244,7 @@ public class RoleDetector {
 
     /**
      * 强制检测指定玩家的角色（忽略缓存）
+     *
      * @param player 玩家实体
      */
     public void forceCheckPlayer(EntityPlayer player) {
@@ -252,6 +291,9 @@ public class RoleDetector {
     private void onRoleChanged(String playerName, MurderHelperMod.PlayerRole newRole, ItemStack weapon) {
         if (roleChangeCallback != null) {
             roleChangeCallback.onRoleChanged(playerName, newRole, weapon);
+        }
+        if (MurderHelperMod.suspectTracker != null) {
+            MurderHelperMod.suspectTracker.onPlayerRoleChanged(playerName, newRole);
         }
     }
 }

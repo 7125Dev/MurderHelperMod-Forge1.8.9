@@ -2,272 +2,154 @@ package me.dev7125.murderhelper.util;
 
 import me.dev7125.murderhelper.MurderHelperMod;
 import net.minecraft.item.ItemStack;
-import org.apache.commons.lang3.tuple.Pair;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.nbt.NBTTagList;
+import net.minecraftforge.common.util.Constants;
 
-import java.util.HashSet;
-import java.util.Set;
-
-/**
- * 物品分类器 - 用于判断物品类型
- */
 /**
  * 物品分类器 - 用于判断物品类型
  */
 public class ItemClassifier {
 
-    // 凶器列表（杀手专属武器）
-    private static final Set<String> MURDER_WEAPONS = new HashSet<>();
-
-    // 公共物品列表（所有角色都可能持有）
-    private static final Set<String> COMMON_ITEMS = new HashSet<>();
-
-    // 排除列表（包含凶器关键词但不是凶器的物品）
-    private static final Set<String> EXCLUDED_ITEMS = new HashSet<>();
-
-    // 排除特定名称物品
-    private static final Set<Pair<String,String>> EXCLUDED_SPECIAL_ITEMS = new HashSet<>();
-
-    static {
-        // 初始化凶器列表
-        MURDER_WEAPONS.add("iron_sword");      // 铁剑
-        MURDER_WEAPONS.add("golden_shovel");   // 金铲
-        MURDER_WEAPONS.add("diamond_pickaxe"); // 钻石镐
-        MURDER_WEAPONS.add("golden_axe");      // 金斧
-        MURDER_WEAPONS.add("sapling");         // 丛林树苗
-        MURDER_WEAPONS.add("jungle_sapling");  // 丛林树苗
-        MURDER_WEAPONS.add("book");            // 书本
-        MURDER_WEAPONS.add("golden_apple");    // 金苹果
-        MURDER_WEAPONS.add("speckled_melon");  // 金西瓜
-        MURDER_WEAPONS.add("boat");            // 船
-        MURDER_WEAPONS.add("bread");           // 面包
-        MURDER_WEAPONS.add("rose_red");        // 玫瑰红
-        MURDER_WEAPONS.add("dye");             // 染料（包括玫瑰红）
-        MURDER_WEAPONS.add("fish");            // 生鱼
-        MURDER_WEAPONS.add("salmon");          // 生鲑鱼
-        MURDER_WEAPONS.add("shears");          // 剪刀
-        MURDER_WEAPONS.add("diamond_hoe");     // 钻石锄
-        MURDER_WEAPONS.add("diamond_sword");   // 钻石剑
-        MURDER_WEAPONS.add("golden_sword");    // 金剑
-        MURDER_WEAPONS.add("lapis_lazuli");    // 青金石
-        MURDER_WEAPONS.add("golden_hoe");      // 金锄头
-        MURDER_WEAPONS.add("record");          // 唱片
-        MURDER_WEAPONS.add("cooked_chicken");  // 熟鸡肉
-        MURDER_WEAPONS.add("nether_brick");    // 地狱砖
-        MURDER_WEAPONS.add("netherbrick");     // 地狱砖
-        MURDER_WEAPONS.add("cooked_beef");     // 熟牛排
-        MURDER_WEAPONS.add("prismarine_shard"); // 海晶碎片
-        MURDER_WEAPONS.add("double_plant");    // 玫瑰丛
-        MURDER_WEAPONS.add("rose_bush");       // 玫瑰丛
-        MURDER_WEAPONS.add("diamond_axe");     // 钻石斧
-        MURDER_WEAPONS.add("cookie");          // 曲奇
-        MURDER_WEAPONS.add("golden_carrot");   // 金胡萝卜
-        MURDER_WEAPONS.add("bone");            // 骨头
-        MURDER_WEAPONS.add("flint");           // 燧石
-        MURDER_WEAPONS.add("coal");            // 煤炭
-        MURDER_WEAPONS.add("charcoal");        // 木炭
-        MURDER_WEAPONS.add("name_tag");        // 命名牌
-        MURDER_WEAPONS.add("leather");         // 皮革
-        MURDER_WEAPONS.add("golden_pickaxe");  // 金镐
-        MURDER_WEAPONS.add("pumpkin_pie");     // 南瓜派
-        MURDER_WEAPONS.add("quartz");          // 下界石英
-        MURDER_WEAPONS.add("diamond_shovel");  // 钻石铲
-        MURDER_WEAPONS.add("blaze_rod");       // 烈焰棒
-        MURDER_WEAPONS.add("stone_shovel");    // 石铲
-        MURDER_WEAPONS.add("reeds");           // 甘蔗
-        MURDER_WEAPONS.add("sugar_cane");      // 甘蔗
-        MURDER_WEAPONS.add("deadbush");        // 枯死的灌木
-        MURDER_WEAPONS.add("dead_bush");       // 枯死的灌木
-        MURDER_WEAPONS.add("wooden_sword");    // 木剑
-        MURDER_WEAPONS.add("wood_sword");      // 木剑
-        MURDER_WEAPONS.add("wooden_axe");      // 木斧
-        MURDER_WEAPONS.add("wood_axe");        // 木斧
-        MURDER_WEAPONS.add("stick");           // 木棍
-        MURDER_WEAPONS.add("iron_shovel");     // 铁铲
-        MURDER_WEAPONS.add("stone_sword");     // 石剑
-
-        // 初始化公共物品列表
-        COMMON_ITEMS.add("map");               // 地图
-        COMMON_ITEMS.add("filled_map");        // 地图
-        COMMON_ITEMS.add("armor_stand");       // 盔甲架
-        COMMON_ITEMS.add("bed");               // 床
-        COMMON_ITEMS.add("bookshelf");         // 书架
-        COMMON_ITEMS.add("slime_ball");        // 粘液球
-        COMMON_ITEMS.add("slimeball");         // 粘液球
-        COMMON_ITEMS.add("magma_cream");       // 岩浆膏
-
-        // 初始化排除列表（包含凶器关键词但不是凶器的物品）
-        EXCLUDED_ITEMS.add("fishing_rod");           // 钓鱼竿（包含fish但不是凶器）
-        EXCLUDED_ITEMS.add("cooked_fish");           // 熟鳕鱼（包含fish但不是凶器）
-        EXCLUDED_ITEMS.add("clownfish");             // 小丑鱼（包含fish但不是凶器）
-        EXCLUDED_ITEMS.add("pufferfish");            // 河豚（包含fish但不是凶器）
-        EXCLUDED_ITEMS.add("bookshelf");             // 书架（包含book但不是凶器）
-        EXCLUDED_ITEMS.add("book_and_quill");        // 书与笔（包含book但不是凶器）
-        EXCLUDED_ITEMS.add("writable_book");         // 书与笔（包含book但不是凶器）
-        EXCLUDED_ITEMS.add("enchanted_book");        // 附魔书（包含book但不是凶器）
-        EXCLUDED_ITEMS.add("written_book");          // 成书（包含book但不是凶器）
-        EXCLUDED_ITEMS.add("coal_ore");              // 煤矿石（包含coal但不是凶器）
-        EXCLUDED_ITEMS.add("coal_block");            // 煤炭块（包含coal但不是凶器）
-        EXCLUDED_ITEMS.add("carrot_on_a_stick");     // 胡萝卜钓竿（包含stick但不是凶器）
-        EXCLUDED_ITEMS.add("carrot_stick");          // 胡萝卜钓竿（包含stick但不是凶器）
-        EXCLUDED_ITEMS.add("sticky_piston");         // 粘性活塞（包含stick但不是凸器）
-        EXCLUDED_ITEMS.add("piston_sticky");         // 粘性活塞（包含stick但不是凶器）
-        EXCLUDED_ITEMS.add("blaze_powder");          // 烈焰粉（包含blaze但不是凶器）
-        EXCLUDED_ITEMS.add("nether_brick_fence");    // 地狱砖栅栏（包含nether_brick但不是凶器）
-        EXCLUDED_ITEMS.add("nether_brick_stairs");   // 地狱砖楼梯（包含nether_brick但不是凶器）
-
-
-        EXCLUDED_SPECIAL_ITEMS.add(Pair.of("iron_sword", "Useless Sword"));     //古墓地图 kali给的诅咒之剑
-        MURDER_WEAPONS.stream().filter(name -> !"iron_sword".equals(name)) //排除掉大部分服务器的铁剑，只保留hypixel特殊的武器皮肤
-                .forEach(murderWeapon -> EXCLUDED_SPECIAL_ITEMS.add(Pair.of(murderWeapon, convertSnakeToTitle(murderWeapon)))); //如果展示名是原minecraft物品名那肯定不是凶器
+    public enum BowCategory {
+        NORMAL_BOW, //通过金锭换来的弓
+        DETECTIVE_BOW, //侦探的弓
+        KALI_BOW, //kali祝福得到的弓
+        NONE //没有弓箭，无辜者还没获得到弓箭
     }
 
-    /**
-     * 判断物品是否是弓
-     */
-    public static boolean isBow(ItemStack item) {
-        if (item == null) return false;
-        String registryName = item.getItem().getRegistryName();
-        if (registryName == null) return false;
-
-        return registryName.contains("bow");
-    }
-
-    /**
-     * 判断物品是否是凶器（杀手武器）
-     * 先精确匹配，再模糊匹配（排除已知的误判情况）
-     */
-    public static boolean isMurderWeapon(ItemStack item) {
-        if (item == null) return false;
-        String registryName = item.getItem().getRegistryName();
-        if (registryName == null) return false;
-
-        String displayName = item.getDisplayName();
-        if (displayName != null && !displayName.isEmpty()) {
-            // 去除所有 Minecraft 颜色代码 (§ + 一个字符)
-            displayName = displayName.replaceAll("§[0-9a-fk-or]", "");
+    public static BowCategory getBowCategory(ItemStack stack) {
+        if (stack == null || stack.getItem() == null) {
+            return BowCategory.NONE;
         }
 
-        // 移除 minecraft: 前缀
-        String itemName = registryName.replace("minecraft:", "").toLowerCase();
+        if (!"minecraft:bow".equals(stack.getItem().getRegistryName())) {
+            return BowCategory.NONE;
+        }
 
-        // 步骤0：检查排除列表，如果在排除列表中直接返回false
-        if (EXCLUDED_ITEMS.contains(itemName)) {
+        if (!stack.hasTagCompound()) {
+            return BowCategory.NORMAL_BOW;
+        }
+
+        NBTTagCompound nbt = stack.getTagCompound();
+
+        /* ① Kali Bow：Infinity 是绝对特征 */
+        if (nbt.hasKey("ench", Constants.NBT.TAG_LIST)) {
+            NBTTagList enchList = nbt.getTagList("ench", Constants.NBT.TAG_COMPOUND);
+            for (int i = 0; i < enchList.tagCount(); i++) {
+                NBTTagCompound ench = enchList.getCompoundTagAt(i);
+                if (ench.hasKey("id", Constants.NBT.TAG_SHORT)
+                        && ench.getShort("id") == 51) {
+                    return BowCategory.KALI_BOW;
+                }
+            }
+        }
+
+        /* ② Lore 判断（插件差异只体现在这里） */
+        if (nbt.hasKey("display", Constants.NBT.TAG_COMPOUND)) {
+            NBTTagCompound display = nbt.getCompoundTag("display");
+
+            if (display.hasKey("Lore", Constants.NBT.TAG_LIST)) {
+                NBTTagList loreList =
+                        display.getTagList("Lore", Constants.NBT.TAG_STRING);
+
+                int loreSize = loreList.tagCount();
+
+                if (loreSize == 1) {
+                    return BowCategory.DETECTIVE_BOW;
+                }
+                if (loreSize == 2) {
+                    return BowCategory.NORMAL_BOW;
+                }
+            }
+        }
+
+        /* ③ 兜底：什么都不满足 */
+        return BowCategory.NORMAL_BOW;
+    }
+
+
+
+    public static boolean isMurderWeapon(ItemStack item) {
+        if (item == null || !item.hasTagCompound()) {
             return false;
         }
 
-        // 排除某些地图特殊物品
-        for (Pair<String, String> specialItem : EXCLUDED_SPECIAL_ITEMS) {
-            if(specialItem.getLeft().equals(itemName) && specialItem.getRight().equals(displayName)) {
-                return false;
+        NBTTagCompound nbt = item.getTagCompound();
+
+        // 首先判断是否有 ExtraAttributes.MELEE 标识
+        if (nbt.hasKey("ExtraAttributes", Constants.NBT.TAG_COMPOUND)) {
+            NBTTagCompound extraAttr = nbt.getCompoundTag("ExtraAttributes");
+            if (extraAttr.hasKey("MELEE", Constants.NBT.TAG_BYTE)) {
+                //MELEE=1是武器，MELEE=0是kali诅咒之剑
+                return extraAttr.getBoolean("MELEE");
             }
         }
 
-        // 步骤1：优先精确匹配
-        if (MURDER_WEAPONS.contains(itemName)) {
-            return true;
-        }
-
-        // 步骤2：模糊匹配（contains）
-        for (String weapon : MURDER_WEAPONS) {
-            String weaponLower = weapon.toLowerCase();
-            if (itemName.contains(weaponLower)) {
+        // 接着判断如果是 minecraft:iron_sword 并且有 display 的 NBT
+        if (item.getItem().getRegistryName().equals("minecraft:iron_sword")) {
+            printItemStackInfo(item);
+            if (nbt.hasKey("display", Constants.NBT.TAG_COMPOUND)) {
                 return true;
             }
         }
 
+        // 其他情况返回 false
         return false;
     }
 
-    /**
-     * 判断物品是否是公共物品
-     * 先精确匹配，再模糊匹配
-     */
-    public static boolean isCommonItem(ItemStack item) {
-        if (item == null) return false;
-        String registryName = item.getItem().getRegistryName();
-        if (registryName == null) return false;
-
-        // 移除 minecraft: 前缀
-        String itemName = registryName.replace("minecraft:", "").toLowerCase();
-
-        // 步骤1：优先精确匹配
-        if (COMMON_ITEMS.contains(itemName)) {
-            return true;
-        }
-
-        // 步骤2：模糊匹配（contains）
-        for (String common : COMMON_ITEMS) {
-            String commonLower = common.toLowerCase();
-            if (itemName.contains(commonLower)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * 根据物品判断玩家角色（初步判断，不考虑角色锁定）
-     * @param item 玩家手持的物品
-     * @return 玩家角色
-     */
-    public static MurderHelperMod.PlayerRole determineRole(ItemStack item) {
+    // 打印完整的ItemStack信息
+    private static void printItemStackInfo(ItemStack item) {
         if (item == null) {
-            // 没有手持物品 → 无法判断，返回 null
-            return null;
+            MurderHelperMod.logger.info("ItemStack: null");
+            return;
         }
 
-        // 有凶器 → 杀手（优先判断凶器）
-        if (isMurderWeapon(item)) {
-            return MurderHelperMod.PlayerRole.MURDERER;
-        }
+        MurderHelperMod.logger.info("=== ItemStack Info ===");
+        MurderHelperMod.logger.info("Item: {}", item.getItem().getRegistryName());
+        MurderHelperMod.logger.info("Count: {}", item.stackSize);
+        MurderHelperMod.logger.info("Damage: {}", item.getItemDamage());
+        MurderHelperMod.logger.info("Display Name: {}", item.getDisplayName());
 
-        // 有弓 → 侦探
-        if (isBow(item)) {
-            return MurderHelperMod.PlayerRole.DETECTIVE;
-        }
+        // 打印完整NBT
+        NBTTagCompound nbt = item.getTagCompound();
+        if (nbt != null) {
+            MurderHelperMod.logger.info("Full NBT: {}", nbt.toString());
 
-        // 有公共物品 → 平民
-        if (isCommonItem(item)) {
-            return MurderHelperMod.PlayerRole.INNOCENT;
-        }
+            // 打印display标签（包含Name和Lore）
+            if (nbt.hasKey("display", Constants.NBT.TAG_COMPOUND)) {
+                NBTTagCompound display = nbt.getCompoundTag("display");
 
-        // 未知物品 → 返回 null，表示无法确定
-        return null;
-    }
+                // 打印Name
+                if (display.hasKey("Name", Constants.NBT.TAG_STRING)) {
+                    MurderHelperMod.logger.info("Custom Name: {}", display.getString("Name"));
+                }
 
-    public static String convertSnakeToTitle(String snakeCase) {
-        if (snakeCase == null || snakeCase.isEmpty()) {
-            return snakeCase;
-        }
-
-        // 按下划线分割
-        String[] words = snakeCase.split("_");
-        StringBuilder titleCase = new StringBuilder();
-
-        for (int i = 0; i < words.length; i++) {
-            if (i > 0) {
-                titleCase.append(" ");
+                // 打印Lore
+                if (display.hasKey("Lore", Constants.NBT.TAG_LIST)) {
+                    NBTTagList lore = display.getTagList("Lore", Constants.NBT.TAG_STRING);
+                    MurderHelperMod.logger.info("Lore ({} lines):", lore.tagCount());
+                    for (int i = 0; i < lore.tagCount(); i++) {
+                        MurderHelperMod.logger.info("  [{}] {}", i, lore.getStringTagAt(i));
+                    }
+                }
             }
-            String word = words[i];
-            if (!word.isEmpty()) {
-                // 首字母大写，其余小写
-                titleCase.append(Character.toUpperCase(word.charAt(0)))
-                        .append(word.substring(1).toLowerCase());
+
+            // 打印其他常见标签
+            if (nbt.hasKey("ExtraAttributes", Constants.NBT.TAG_COMPOUND)) {
+                MurderHelperMod.logger.info("ExtraAttributes: {}", nbt.getCompoundTag("ExtraAttributes"));
             }
+
+            if (nbt.hasKey("Unbreakable", Constants.NBT.TAG_BYTE)) {
+                MurderHelperMod.logger.info("Unbreakable: {}", nbt.getBoolean("Unbreakable"));
+            }
+
+            if (nbt.hasKey("HideFlags", Constants.NBT.TAG_INT)) {
+                MurderHelperMod.logger.info("HideFlags: {}", nbt.getInteger("HideFlags"));
+            }
+        } else {
+            MurderHelperMod.logger.info("NBT: null");
         }
-
-        return titleCase.toString();
-    }
-
-    /**
-     * 获取物品的类型描述（用于调试）
-     */
-    public static String getItemTypeDescription(ItemStack item) {
-        if (item == null) return "Empty";
-        if (isBow(item)) return "Bow (Detective)";
-        if (isMurderWeapon(item)) return "Murder Weapon";
-        if (isCommonItem(item)) return "Common Item";
-        return "Unknown Item";
+        MurderHelperMod.logger.info("=====================");
     }
 }

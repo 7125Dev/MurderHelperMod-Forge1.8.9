@@ -1,6 +1,9 @@
 package me.dev7125.murderhelper.render;
 
 import me.dev7125.murderhelper.MurderHelperMod;
+import me.dev7125.murderhelper.game.BowShotDetector;
+import me.dev7125.murderhelper.game.KnifeThrownDetector;
+import me.dev7125.murderhelper.util.ItemClassifier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.AbstractClientPlayer;
 import net.minecraft.client.gui.Gui;
@@ -11,6 +14,7 @@ import net.minecraft.client.renderer.entity.RenderItem;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.Vec3;
 import org.lwjgl.opengl.GL11;
 
 /**
@@ -20,11 +24,13 @@ import org.lwjgl.opengl.GL11;
 public class MurderMysteryHUD {
 
     private final Minecraft mc;
+    private final KnifeThrownDetector knifeThrownDetector;
+    private final BowShotDetector bowShotDetector;
 
     // 窗口尺寸（动态计算）
     private int currentWindowWidth = 120;
     private static final int MIN_WIDTH = 120;
-    private static final int WINDOW_HEIGHT = 98;
+    private static final int WINDOW_HEIGHT = 110; // 增加高度以容纳新行
     private static final int SLIDER_WIDTH = 10;
 
     // 窗口位置
@@ -50,8 +56,10 @@ public class MurderMysteryHUD {
     private static final double SAFE_DISTANCE = 50.0;
     private static final double DANGER_DISTANCE = 10.0;
 
-    public MurderMysteryHUD() {
+    public MurderMysteryHUD(KnifeThrownDetector weaponDetector, BowShotDetector bowShotDetector) {
         this.mc = Minecraft.getMinecraft();
+        this.knifeThrownDetector = weaponDetector;
+        this.bowShotDetector = bowShotDetector;
     }
 
     /**
@@ -88,38 +96,36 @@ public class MurderMysteryHUD {
         // 1. 绘制玩家头像（24x24）
         drawPlayerHead(targetPlayer, contentX, contentY, 24);
 
-        // 2. 玩家名称和状态（在头像右侧）
+        // 2. 玩家名称（在头像右侧）
         String playerName = targetPlayer.getName();
         mc.fontRendererObj.drawStringWithShadow(playerName, contentX + 30, contentY, 0xFFFFFF);
 
-        // 根据角色显示不同的文字和颜色
+        // 3. 角色显示（在名称下方）
         MurderHelperMod.PlayerRole role = MurderHelperMod.getPlayerRole(targetPlayer);
-        String roleText;
-        int roleColor;
-
-        if (role == MurderHelperMod.PlayerRole.DETECTIVE) {
-            roleText = "§9Detective"; // 蓝色
-            roleColor = 0x5555FF;
-        } else if (role == MurderHelperMod.PlayerRole.MURDERER) {
-            roleText = "§cMurderer"; // 红色
-            roleColor = 0xFF5555;
-        } else {
-            roleText = "§aInnocent"; // 绿色（虽然不太可能出现）
-            roleColor = 0x55FF55;
-        }
+        String roleText = getRoleText(role);
+        int roleColor = getRoleColor(role);
         mc.fontRendererObj.drawStringWithShadow(roleText, contentX + 30, contentY + 10, roleColor);
 
-        // 3. 武器信息
+        // 4. 武器信息（分两行显示）
         contentY += 28;
         if (weapon != null) {
-            drawItemStack(weapon, contentX, contentY - 4, 20); // 放大到20x20
-            String weaponName = getFormattedItemName(weapon);
-            mc.fontRendererObj.drawStringWithShadow("§7" + weaponName, contentX + 24, contentY, 0xFFFFFF);
+            drawItemStack(weapon, contentX, contentY - 4, 20);
+
+            // 第一行：武器名称 + 类型
+            String weaponNameAndType = getWeaponNameAndType(targetPlayer, weapon, role);
+            mc.fontRendererObj.drawStringWithShadow(weaponNameAndType, contentX + 24, contentY, 0xFFFFFF);
+
+            // 第二行：状态信息
+            contentY += 10;
+            String weaponStatus = getWeaponStatus(targetPlayer, weapon, role);
+            mc.fontRendererObj.drawStringWithShadow(weaponStatus, contentX + 24, contentY, 0xFFFFFF);
         } else {
-            mc.fontRendererObj.drawStringWithShadow("§7Unknown", contentX, contentY, 0xAAAAAA);
+            // 显示最后记录的武器信息
+            String lastWeaponInfo = getLastKnownWeaponInfo(targetPlayer, role);
+            mc.fontRendererObj.drawStringWithShadow(lastWeaponInfo, contentX, contentY, 0xAAAAAA);
         }
 
-        // 4. 距离（带颜色和状态）
+        // 5. 距离（带颜色和状态）
         contentY += 14;
         int distanceColor = calculateDistanceColor(distance);
         String distanceText = String.format("%.1fm", distance);
@@ -127,18 +133,40 @@ public class MurderMysteryHUD {
         mc.fontRendererObj.drawStringWithShadow(distanceText, contentX, contentY, distanceColor);
         mc.fontRendererObj.drawString(statusText, contentX + 42, contentY, 0xFFFFFF);
 
-        // 5. 坐标
+        // 6. 飞刀位置信息（仅在凶手飞行中时显示，作为危险警告）
+        if (role == MurderHelperMod.PlayerRole.MURDERER) {
+            KnifeThrownDetector.WeaponInfo weaponInfo = knifeThrownDetector.getWeaponInfo(targetPlayer.getName());
+
+            if (weaponInfo != null && weaponInfo.getKnifeState() == KnifeThrownDetector.KnifeState.IN_FLIGHT) {
+                contentY += 12;
+                Vec3 knifePos = weaponInfo.projectile.position;
+                if (knifePos != null) {
+                    double knifeDist = Math.sqrt(
+                            Math.pow(knifePos.xCoord - mc.thePlayer.posX, 2) +
+                                    Math.pow(knifePos.yCoord - mc.thePlayer.posY, 2) +
+                                    Math.pow(knifePos.zCoord - mc.thePlayer.posZ, 2)
+                    );
+
+                    int knifeColor = knifeDist <= 5.0 ? 0xFF0000 : (knifeDist <= 15.0 ? 0xFFAA00 : 0xFFFF00);
+                    String knifeInfo = String.format("§cKnife in Air: §f%.1fm", knifeDist);
+                    mc.fontRendererObj.drawStringWithShadow(knifeInfo, contentX, contentY, knifeColor);
+                }
+            }
+        }
+        // 6b. 箭矢距离信息（仅SHOOTER和DETECTIVE显示）
+        else if (role == MurderHelperMod.PlayerRole.SHOOTER || role == MurderHelperMod.PlayerRole.DETECTIVE) {
+            String arrowInfo = getArrowDistanceInfo(targetPlayer, role);
+            if (arrowInfo != null) {
+                contentY += 12;
+                mc.fontRendererObj.drawStringWithShadow(arrowInfo, contentX, contentY, 0xFFFFFF);
+            }
+        }
+
+        // 7. 坐标
         contentY += 12;
         String coordText = String.format("§7X:§f%.0f §7Y:§f%.0f §7Z:§f%.0f",
                 targetPlayer.posX, targetPlayer.posY, targetPlayer.posZ);
         mc.fontRendererObj.drawStringWithShadow(coordText, contentX, contentY, 0xFFFFFF);
-
-        // 6. 方向
-        contentY += 12;
-        double deltaX = targetPlayer.posX - mc.thePlayer.posX;
-        double deltaZ = targetPlayer.posZ - mc.thePlayer.posZ;
-        String direction = getDirectionText(deltaX, deltaZ);
-        mc.fontRendererObj.drawStringWithShadow("§7Dir: §f" + direction, contentX, contentY, 0xFFFFFF);
 
         // 绘制垂直透明度滑块（右侧）
         drawOpacitySlider();
@@ -149,30 +177,311 @@ public class MurderMysteryHUD {
     }
 
     /**
+     * 获取角色文本
+     */
+    private String getRoleText(MurderHelperMod.PlayerRole role) {
+        switch (role) {
+            case MURDERER:
+                return "§cMurderer";
+            case DETECTIVE:
+                return "§9Detective";
+            case SHOOTER:
+                return "§6Shooter";
+            case INNOCENT:
+            default:
+                return "§aInnocent";
+        }
+    }
+
+    /**
+     * 获取角色颜色
+     */
+    private int getRoleColor(MurderHelperMod.PlayerRole role) {
+        switch (role) {
+            case MURDERER:
+                return 0xFF5555;
+            case DETECTIVE:
+                return 0xFF55FFFF;
+            case SHOOTER:
+                return 0xFF0000AA;
+            case INNOCENT:
+            default:
+                return 0xFF55FF55;
+        }
+    }
+
+    /**
+     * 获取最后已知的武器信息（当手上没有物品时）
+     */
+    private String getLastKnownWeaponInfo(EntityPlayer player, MurderHelperMod.PlayerRole role) {
+        // 从PlayerTracker获取记录的武器
+        ItemStack recordedWeapon = MurderHelperMod.playerTracker.getPlayerWeapon(player);
+
+        if (recordedWeapon == null) {
+            return "§7Unknown";
+        }
+
+        String displayName = recordedWeapon.getDisplayName();
+        if (displayName != null && !displayName.isEmpty()) {
+            displayName = displayName.replaceAll("§[0-9a-fk-or]", "");
+        } else {
+            displayName = "Unknown";
+        }
+
+        // 如果是射手或侦探，添加弓类型标签
+        String typeText = "";
+        if (role == MurderHelperMod.PlayerRole.SHOOTER || role == MurderHelperMod.PlayerRole.DETECTIVE) {
+            ItemClassifier.BowCategory bowCategory = ItemClassifier.getBowCategory(recordedWeapon);
+            switch (bowCategory) {
+                case DETECTIVE_BOW:
+                    typeText = " §9[Detective]";
+                    break;
+                case KALI_BOW:
+                    typeText = " §d[Kali/∞]";
+                    break;
+                case NORMAL_BOW:
+                    typeText = " §a[Normal]";
+                    break;
+                case NONE:
+                    break;
+            }
+        }
+
+        return "§7" + displayName + typeText + " §7(Unarmed)";
+    }
+
+    /**
+     * 获取武器名称和类型（第一行）
+     */
+    private String getWeaponNameAndType(EntityPlayer player, ItemStack weapon, MurderHelperMod.PlayerRole role) {
+        if (weapon == null) {
+            return "§7Unknown";
+        }
+
+        // 获取显示名并去除颜色代码
+        String displayName = weapon.getDisplayName();
+        if (displayName != null && !displayName.isEmpty()) {
+            displayName = displayName.replaceAll("§[0-9a-fk-or]", "");
+        } else {
+            displayName = "Unknown";
+        }
+
+        String typeText = "";
+
+        // 如果是射手或侦探，显示弓的类型
+        if (role == MurderHelperMod.PlayerRole.SHOOTER || role == MurderHelperMod.PlayerRole.DETECTIVE) {
+            ItemClassifier.BowCategory bowCategory = ItemClassifier.getBowCategory(weapon);
+
+            switch (bowCategory) {
+                case DETECTIVE_BOW:
+                    typeText = " §9[Detective]";
+                    break;
+                case KALI_BOW:
+                    typeText = " §d[Kali/∞]";
+                    break;
+                case NORMAL_BOW:
+                    typeText = " §a[Normal]";
+                    break;
+                case NONE:
+                    break;
+            }
+        }
+
+        return displayName + typeText;
+    }
+
+    /**
+     * 获取武器状态信息（第二行）
+     */
+    private String getWeaponStatus(EntityPlayer player, ItemStack weapon, MurderHelperMod.PlayerRole role) {
+        if (weapon == null) {
+            return "";
+        }
+
+        // 凶手的武器状态
+        if (role == MurderHelperMod.PlayerRole.MURDERER) {
+            KnifeThrownDetector.WeaponInfo info = knifeThrownDetector.getWeaponInfo(player.getName());
+
+            if (info != null) {
+                // 手持状态
+                KnifeThrownDetector.HoldingState holdingState = info.getHoldingState();
+                String holdingText = "";
+                switch (holdingState) {
+                    case HOLDING:
+                        holdingText = "§a(Holding)";
+                        break;
+                    case NOT_HOLDING:
+                        holdingText = "§7(Unarmed)";
+                        break;
+                }
+
+                // 飞刀状态
+                KnifeThrownDetector.KnifeState knifeState = info.getKnifeState();
+                String knifeText = "";
+                switch (knifeState) {
+                    case IN_FLIGHT:
+                        knifeText = " §c[Flying]";
+                        break;
+                    case COOLDOWN:
+                        double cooldown = info.getCooldownRemainingSeconds();
+                        // CD结束时显示Ready
+                        if (cooldown <= 0) {
+                            knifeText = " §a[Ready]";
+                        } else {
+                            knifeText = String.format(" §6[CD: %.1fs]", cooldown);
+                        }
+                        break;
+                    case NONE:
+                        knifeText = " §a[Ready]";
+                        break;
+                }
+
+                return holdingText + knifeText;
+            }
+        }
+        // 射手或侦探的弓状态
+        else if (role == MurderHelperMod.PlayerRole.SHOOTER || role == MurderHelperMod.PlayerRole.DETECTIVE) {
+            BowShotDetector.BowInfo bowInfo = bowShotDetector.getBowInfo(player.getName());
+
+            if (bowInfo != null) {
+                // 手持状态
+                BowShotDetector.HoldingState holdingState = bowInfo.getHoldingState();
+                String holdingText = "";
+                switch (holdingState) {
+                    case HOLDING:
+                        holdingText = "§a(Holding)";
+                        break;
+                    case NOT_HOLDING:
+                        holdingText = "§7(Unarmed)";
+                        break;
+                }
+
+                // 拉弓状态（优先显示）
+                BowShotDetector.DrawState drawState = bowInfo.getDrawState();
+                String drawText = "";
+                switch (drawState) {
+                    case DRAWING:
+                        drawText = " §e[Drawing]";
+                        break;
+                    case READY_TO_SHOOT:
+                        drawText = " §c[Charged!]";
+                        break;
+                    case NONE:
+                        // 不拉弓时才显示射击状态
+                        BowShotDetector.ShotState shotState = bowInfo.getShotState();
+                        switch (shotState) {
+                            case COOLDOWN:
+                                double cooldown = bowInfo.getCooldownRemainingSeconds();
+                                // CD结束时显示Ready
+                                if (cooldown <= 0) {
+                                    drawText = " §a[Ready]";
+                                } else {
+                                    drawText = String.format(" §6[CD: %.1fs]", cooldown);
+                                }
+                                break;
+                            case SHOT:
+                                drawText = " §7(Shot)";
+                                break;
+                            case READY:
+                                drawText = " §a[Ready]";
+                                break;
+                        }
+                        break;
+                }
+
+                return holdingText + drawText;
+            } else {
+                // 没有弓信息，只显示手持状态
+                ItemStack heldItem = player.getHeldItem();
+                boolean isHolding = heldItem != null && areItemStacksEqual(weapon, heldItem);
+                return isHolding ? "§a(Holding)" : "§7(Unarmed)";
+            }
+        }
+        // 普通玩家
+        else {
+            ItemStack heldItem = player.getHeldItem();
+            boolean isHolding = heldItem != null && areItemStacksEqual(weapon, heldItem);
+            return isHolding ? "§a(Holding)" : "§7(Unarmed)";
+        }
+
+        return "";
+    }
+
+    /**
+     * 获取箭矢信息文本（仅SHOOTER和DETECTIVE显示）
+     */
+    private String getArrowDistanceInfo(EntityPlayer player, MurderHelperMod.PlayerRole role) {
+        if (role != MurderHelperMod.PlayerRole.SHOOTER && role != MurderHelperMod.PlayerRole.DETECTIVE) {
+            return null;
+        }
+
+        BowShotDetector.ArrowInfo nearestArrow = bowShotDetector.getNearestArrowToLocalPlayer(player.getName());
+        if (nearestArrow == null) {
+            return null;
+        }
+
+        double arrowDist = nearestArrow.getDistanceToPlayer(mc.thePlayer);
+
+        int arrowColor;
+        String warningText;
+        if (arrowDist <= 3.0) {
+            arrowColor = 0xFF0000;
+            warningText = "§c§lDANGER!";
+        } else if (arrowDist <= 8.0) {
+            arrowColor = 0xFFAA00;
+            warningText = "§6Warning";
+        } else if (arrowDist <= 15.0) {
+            arrowColor = 0xFFFF00;
+            warningText = "§eIncoming";
+        } else {
+            arrowColor = 0xAAAAAA;
+            warningText = "§7Far";
+        }
+
+        return String.format("§cArrow: §f%.1fm %s", arrowDist, warningText);
+    }
+
+    /**
+     * 比较两个 ItemStack 是否相同
+     */
+    private boolean areItemStacksEqual(ItemStack stack1, ItemStack stack2) {
+        if (stack1 == null && stack2 == null) return true;
+        if (stack1 == null || stack2 == null) return false;
+        return stack1.getItem() == stack2.getItem()
+                && stack1.getDisplayName().equals(stack2.getDisplayName());
+    }
+
+    /**
      * 计算窗口需要的宽度（根据内容）
      */
     private int calculateWindowWidth(EntityPlayer player, ItemStack weapon) {
         int maxWidth = MIN_WIDTH;
 
-        // 检查玩家名字宽度
         String playerName = player.getName();
-        int nameWidth = mc.fontRendererObj.getStringWidth(playerName) + 38; // 30 (头像) + 8 (padding)
+        int nameWidth = mc.fontRendererObj.getStringWidth(playerName) + 38;
         maxWidth = Math.max(maxWidth, nameWidth);
 
-        // 检查武器名字宽度
         if (weapon != null) {
-            String weaponName = getFormattedItemName(weapon);
-            int weaponWidth = mc.fontRendererObj.getStringWidth(weaponName) + 32; // 24 (图标) + 8 (padding)
-            maxWidth = Math.max(maxWidth, weaponWidth);
+            MurderHelperMod.PlayerRole role = MurderHelperMod.getPlayerRole(player);
+
+            // 检查第一行宽度（名称+类型）
+            String weaponNameAndType = getWeaponNameAndType(player, weapon, role);
+            String cleanName = weaponNameAndType.replaceAll("§[0-9a-fk-or]", "");
+            int nameLineWidth = mc.fontRendererObj.getStringWidth(cleanName) + 32;
+            maxWidth = Math.max(maxWidth, nameLineWidth);
+
+            // 检查第二行宽度（状态）
+            String weaponStatus = getWeaponStatus(player, weapon, role);
+            String cleanStatus = weaponStatus.replaceAll("§[0-9a-fk-or]", "");
+            int statusLineWidth = mc.fontRendererObj.getStringWidth(cleanStatus) + 32;
+            maxWidth = Math.max(maxWidth, statusLineWidth);
         }
 
-        // 检查坐标宽度
         String coordText = String.format("X:%.0f Y:%.0f Z:%.0f",
                 player.posX, player.posY, player.posZ);
         int coordWidth = mc.fontRendererObj.getStringWidth(coordText) + 16;
         maxWidth = Math.max(maxWidth, coordWidth);
 
-        // 添加滑块宽度
         return maxWidth + SLIDER_WIDTH;
     }
 
@@ -183,27 +492,22 @@ public class MurderMysteryHUD {
         int sliderX = windowX + currentWindowWidth - SLIDER_WIDTH;
         int sliderY = windowY;
 
-        // 滑块背景（深色）
         int sliderBgColor = 0x80000000;
         drawRect(sliderX, sliderY, sliderX + SLIDER_WIDTH, sliderY + WINDOW_HEIGHT, sliderBgColor);
 
-        // 滑块轨道（垂直）
         int trackX = sliderX + 4;
         int trackY = sliderY + 10;
         int trackWidth = 2;
         int trackHeight = WINDOW_HEIGHT - 20;
         drawRect(trackX, trackY, trackX + trackWidth, trackY + trackHeight, 0xFF555555);
 
-        // 计算滑块位置（从上到下：透明到不透明）
         float ratio = bgAlpha / 255.0f;
-        int knobY = trackY + (int)(trackHeight * (1.0f - ratio)); // 反转：上面=透明，下面=不透明
+        int knobY = trackY + (int)(trackHeight * (1.0f - ratio));
         int knobX = sliderX + 2;
         int knobSize = 6;
 
-        // 绘制滑块按钮
         drawRect(knobX, knobY - knobSize/2, knobX + knobSize, knobY + knobSize/2, 0xFFFFFFFF);
 
-        // 在滑块上显示百分比（旋转显示）
         GlStateManager.pushMatrix();
         GlStateManager.translate(sliderX + 5, sliderY + WINDOW_HEIGHT / 2, 0);
         GlStateManager.rotate(-90, 0, 0, 1);
@@ -211,52 +515,6 @@ public class MurderMysteryHUD {
         int textWidth = mc.fontRendererObj.getStringWidth(opacityText);
         mc.fontRendererObj.drawStringWithShadow(opacityText, -textWidth / 2, 0, 0xFFFFFF);
         GlStateManager.popMatrix();
-    }
-
-    /**
-     * 获取格式化的物品名称 (驼峰命名 + 显示名)
-     */
-    private String getFormattedItemName(ItemStack weapon) {
-        String itemName = "Unknown";
-        if (weapon != null) {
-            // 获取物品注册名
-            String registryName = weapon.getItem().getRegistryName();
-            if (registryName != null) {
-                // 去掉 minecraft: 前缀
-                if (registryName.contains(":")) {
-                    registryName = registryName.substring(registryName.indexOf(":") + 1);
-                }
-                // 将 diamond_sword 转换为 DiamondSword (驼峰命名)
-                String[] parts = registryName.split("_");
-                StringBuilder camelCase = new StringBuilder();
-                for (String part : parts) {
-                    if (part.length() > 0) {
-                        // 首字母大写，其余小写
-                        camelCase.append(Character.toUpperCase(part.charAt(0)));
-                        if (part.length() > 1) {
-                            camelCase.append(part.substring(1).toLowerCase());
-                        }
-                    }
-                }
-                registryName = camelCase.toString();
-            }
-            // 获取显示名并去除颜色代码
-            String displayName = weapon.getDisplayName();
-            if (displayName != null && !displayName.isEmpty()) {
-                // 去除所有 Minecraft 颜色代码 (§ + 一个字符)
-                displayName = displayName.replaceAll("§[0-9a-fk-or]", "");
-                // 格式化为: DiamondSword(钻石剑)
-                itemName = registryName + "(" + displayName + ")";
-            } else {
-                // 如果显示名为空，只显示驼峰命名
-                itemName = registryName;
-            }
-            // 如果注册名也为空，使用 Unknown
-            if (itemName == null || itemName.isEmpty()) {
-                itemName = "Unknown";
-            }
-        }
-        return itemName;
     }
 
     /**
@@ -272,23 +530,6 @@ public class MurderMysteryHUD {
         } else {
             return "§aSafe";
         }
-    }
-
-    /**
-     * 获取方向文本
-     */
-    private String getDirectionText(double deltaX, double deltaZ) {
-        double angle = Math.toDegrees(Math.atan2(deltaZ, deltaX));
-        if (angle < 0) angle += 360;
-
-        if (angle >= 337.5 || angle < 22.5) return "E →";
-        else if (angle >= 22.5 && angle < 67.5) return "SE ↘";
-        else if (angle >= 67.5 && angle < 112.5) return "S ↓";
-        else if (angle >= 112.5 && angle < 157.5) return "SW ↙";
-        else if (angle >= 157.5 && angle < 202.5) return "W ←";
-        else if (angle >= 202.5 && angle < 247.5) return "NW ↖";
-        else if (angle >= 247.5 && angle < 292.5) return "N ↑";
-        else return "NE ↗";
     }
 
     /**
@@ -386,8 +627,7 @@ public class MurderMysteryHUD {
         try {
             GlStateManager.pushMatrix();
 
-            // 缩放到指定大小
-            float scale = size / 16.0f; // 默认物品大小是16x16
+            float scale = size / 16.0f;
             GlStateManager.translate(x, y, 0);
             GlStateManager.scale(scale, scale, 1.0f);
 
@@ -405,13 +645,6 @@ public class MurderMysteryHUD {
     }
 
     /**
-     * 绘制物品图标（默认16x16大小，保留用于兼容）
-     */
-    private void drawItemStack(ItemStack stack, int x, int y) {
-        drawItemStack(stack, x, y, 16);
-    }
-
-    /**
      * 处理鼠标输入（拖动窗口和滑块）
      */
     public boolean handleMouseInput(int mouseX, int mouseY, boolean mousePressed) {
@@ -420,12 +653,10 @@ public class MurderMysteryHUD {
         int sliderX = windowX + currentWindowWidth - SLIDER_WIDTH;
 
         if (mousePressed) {
-            // 检查是否点击滑块区域
             if (isMouseOverSlider(mouseX, mouseY) && !isDragging) {
                 isDraggingSlider = true;
                 updateSliderValue(mouseY);
             }
-            // 检查是否点击窗口（但不是滑块）
             else if (isMouseOverWindow(mouseX, mouseY) && !isDraggingSlider && mouseX < sliderX) {
                 if (!isDragging) {
                     isDragging = true;
@@ -434,7 +665,6 @@ public class MurderMysteryHUD {
                 }
             }
         } else {
-            // 松开鼠标
             if (isDragging) {
                 justFinishedDragging = true;
             }
@@ -445,13 +675,11 @@ public class MurderMysteryHUD {
             }
         }
 
-        // 拖动窗口
         if (isDragging) {
             windowX = mouseX - dragOffsetX;
             windowY = mouseY - dragOffsetY;
         }
 
-        // 拖动滑块
         if (isDraggingSlider) {
             updateSliderValue(mouseY);
         }
@@ -469,7 +697,6 @@ public class MurderMysteryHUD {
         int relativeY = mouseY - trackY;
         relativeY = Math.max(0, Math.min(relativeY, trackHeight));
 
-        // 反转：上面=透明(0)，下面=不透明(255)
         float ratio = 1.0f - ((float) relativeY / trackHeight);
         bgAlpha = (int) (ratio * 255);
         bgAlpha = Math.max(0, Math.min(255, bgAlpha));

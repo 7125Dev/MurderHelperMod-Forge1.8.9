@@ -1,24 +1,21 @@
 package me.dev7125.murderhelper;
 
-import me.dev7125.murderhelper.command.MurderHelperCommands;
 import me.dev7125.murderhelper.config.ModConfig;
+import me.dev7125.murderhelper.core.listener.ConnectionEventHandler;
+import me.dev7125.murderhelper.core.listener.MurderMysteryGameListener;
+import me.dev7125.murderhelper.core.listener.PacketListenerRegistry;
 import me.dev7125.murderhelper.feature.AlarmSystem;
 import me.dev7125.murderhelper.feature.ShoutMessageBuilder;
-import me.dev7125.murderhelper.game.GameStateManager;
-import me.dev7125.murderhelper.game.PlayerTracker;
-import me.dev7125.murderhelper.game.RoleDetector;
+import me.dev7125.murderhelper.game.*;
 import me.dev7125.murderhelper.handler.BowDropTracker;
 import me.dev7125.murderhelper.handler.HUDHandler;
 import me.dev7125.murderhelper.handler.RenderHandler;
-import me.dev7125.murderhelper.util.ItemClassifier;
-import me.dev7125.murderhelper.util.GameStateDetector;
+import me.dev7125.murderhelper.util.GameConstants;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
-import net.minecraftforge.client.ClientCommandHandler;
-import net.minecraftforge.client.event.ClientChatReceivedEvent;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
@@ -29,6 +26,8 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 
 @Mod(modid = MurderHelperMod.MODID, version = MurderHelperMod.VERSION, name = MurderHelperMod.NAME,
         clientSideOnly = true, guiFactory = "me.dev7125.murderhelper.gui.ModGuiFactory")
@@ -36,14 +35,16 @@ public class MurderHelperMod {
 
     // ========== 模组信息 ==========
     public static final String MODID = "murderhelper";
-    public static final String VERSION = "1.0";
+    public static final String VERSION = "1.0.3";
     public static final String NAME = "MurderHelperMod";
 
     // ========== 玩家角色枚举 ==========
     public enum PlayerRole {
         INNOCENT,      // 普通平民
         MURDERER,      // 杀手
-        DETECTIVE      // 侦探（有弓）
+        DETECTIVE,      // 侦探（有弓）
+        SHOOTER, //平民获得到弓箭
+        SUSPECT //未定位到杀手前根据尸体附近30格推断出来的几个嫌疑人
     }
 
     // ========== 核心组件 ==========
@@ -55,12 +56,23 @@ public class MurderHelperMod {
     public static Logger logger;
     public static HUDHandler hudHandler;
     public static BowDropTracker bowDropTracker;
+    public static KnifeThrownDetector weaponDetector;
+    public static BowShotDetector bowShotDetector;
+    public static CorpseDetector corpseDetector;
+    public static SuspectTracker suspectTracker;
 
-    // ========== 游戏状态检测器（单例） ==========
-    private GameStateDetector detector;
+    private static Map<String, Boolean> tabListCache = new HashMap<>();
+    private static long lastTabListUpdate = 0;
+
+    public static String playerName;
+
+    public static Minecraft mc = Minecraft.getMinecraft();
 
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
+        //注册监听器
+        MinecraftForge.EVENT_BUS.register(new ConnectionEventHandler());
+
         logger = event.getModLog();
 
         // 初始化配置
@@ -72,9 +84,6 @@ public class MurderHelperMod {
         config = new ModConfig();
         config.load(new File(configDir, "config.cfg"));
 
-        // 初始化游戏状态检测器
-        detector = GameStateDetector.getInstance();
-        detector.setLogger(logger);
 
         // 初始化核心组件
         playerTracker = new PlayerTracker();
@@ -82,6 +91,11 @@ public class MurderHelperMod {
         roleDetector = new RoleDetector(logger, gameState, playerTracker);
         alarmSystem = new AlarmSystem();
         bowDropTracker = new BowDropTracker();
+        weaponDetector = new KnifeThrownDetector();
+        bowShotDetector = new BowShotDetector();
+        corpseDetector = new CorpseDetector(logger);
+        suspectTracker = new SuspectTracker(logger, playerTracker, corpseDetector);
+
 
         // 设置角色变化回调（用于自动喊话）
         roleDetector.setRoleChangeCallback(this::handleRoleChange);
@@ -92,7 +106,7 @@ public class MurderHelperMod {
         MinecraftForge.EVENT_BUS.register(bowDropTracker);
 
         // 初始化并注册HUD处理器
-        hudHandler = new HUDHandler();
+        hudHandler = new HUDHandler(weaponDetector, bowShotDetector);
         MinecraftForge.EVENT_BUS.register(hudHandler);
 
         // 从配置文件加载HUD窗口位置
@@ -100,113 +114,80 @@ public class MurderHelperMod {
         hudHandler.getHUD().windowY = config.hudWindowY;
         hudHandler.getHUD().bgAlpha = config.hudBgAlpha;
 
+        playerName = mc.getSession().getUsername();
+
         logger.info("MurderHelperMod v" + VERSION + " initialized!");
     }
 
+
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
-        // 注册命令
-        ClientCommandHandler.instance.registerCommand(new MurderHelperCommands());
-        logger.info("MurderHelperMod commands registered!");
+
+        //注册数据包监听器
+        PacketListenerRegistry.register(new MurderMysteryGameListener(weaponDetector, bowShotDetector, corpseDetector,
+                suspectTracker));
+        logger.info("MurderMysteryGameListener registered!");
     }
+
 
     // ========== 事件处理 ==========
 
     @SubscribeEvent
-    public void onWorldUnload(WorldEvent.Unload event) {
-        if (event.world.isRemote) {
-            clearGameData();
-        }
-    }
-
-    @SubscribeEvent
     public void onClientDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
         clearGameData();
+        // 清空待处理的数据包队列
+        PacketListenerRegistry.clearQueue();
     }
 
-    @SubscribeEvent
-    public void onChatReceived(ClientChatReceivedEvent event) {
-        String message = event.message.getUnformattedText();
-        String formattedMessage = event.message.getFormattedText();
-
-        // 使用 GameStateManager 处理聊天消息
-        // GameStateManager 会使用 GameStateDetector 进行检测
-        gameState.processChatMessage(message, formattedMessage);
-    }
-
-    @SubscribeEvent(priority = EventPriority.NORMAL)
+    @SubscribeEvent(priority = EventPriority.HIGHEST) // 提高优先级，优先处理数据包
     public void onClientTick(TickEvent.ClientTickEvent event) {
+        // 在tick开始时处理数据包队列
+        if (event.phase == TickEvent.Phase.START) {
+            PacketListenerRegistry.processQueue();
+            return;
+        }
+
+        // 在tick结束时处理游戏逻辑
         if (event.phase != TickEvent.Phase.END) {
             return;
         }
 
-        // 更新游戏状态
-        gameState.tick();
-
-        // 处理传送延迟
-        handleTeleportDelay();
-
-        // 如果应该跳过tick（传送期间或游戏结束延迟期间）
-        if (gameState.shouldSkipTick()) {
-            return;
-        }
-
-        // 更新游戏状态（是否在游戏中）
-        updateGameState();
-
-        // 如果未开启全局功能或不在游戏中，直接返回
-        if (!config.globalEnabled || !gameState.isInGame() ||
-                Minecraft.getMinecraft().theWorld == null) {
-            return;
-        }
-
-        // 处理游戏逻辑
-        processGameLogic();
-    }
-
-    // ========== 游戏逻辑处理 ==========
-
-    /**
-     * 处理传送延迟
-     */
-    private void handleTeleportDelay() {
-        gameState.handleTeleportComplete();
-    }
-
-    /**
-     * 更新游戏是否在进行中的状态
-     */
-    private void updateGameState() {
-        // 使用 GameStateManager 的方法，内部会调用 GameStateDetector
-        gameState.updateInGameStatus();
-
-        // 如果离开游戏，清理角色检测器缓存
-        if (!gameState.isInGame()) {
-            roleDetector.clearCache();
-            logger.debug("Left game, cleared role detector cache");
-        }
-    }
-
-    /**
-     * 处理游戏内逻辑
-     */
-    private void processGameLogic() {
-        EntityPlayer localPlayer = Minecraft.getMinecraft().thePlayer;
+        EntityPlayer localPlayer = mc.thePlayer;
         if (localPlayer == null) {
             return;
         }
 
-        // 检测自己的角色
-        roleDetector.detectMyRole(localPlayer, config.roleSlotIndex);
-
-        // 检测游戏是否真正开始
-        if (!gameState.isGameActuallyStarted()) {
-            checkAndTriggerGameStart(localPlayer);
+        // 如果未开启全局功能或不在游戏中，直接返回
+        if (!config.globalEnabled || !gameState.isInGame() ||
+                mc.theWorld == null) {
+            return;
         }
 
-        // 只有游戏真正开始后才监听其他玩家和警报
-        if (gameState.isGameActuallyStarted()) {
+        //检测凶手武器状态
+        weaponDetector.tick();
+
+        // 更新游戏状态管理器
+        gameState.tick();
+
+
+        // 只有在游戏真正开始且过了延迟时间后才检测角色
+        if (gameState.isGameActuallyStarted() && gameState.shouldCheckRoles()) {
+
+            // 检测自己的角色
+            roleDetector.detectMyRole(localPlayer, config.roleSlotIndex);
+
+            // 监控其他玩家
             monitorOtherPlayers(localPlayer);
+
+            // 嫌疑人检测
+            if (suspectTracker != null) {
+                suspectTracker.updateSuspects();
+            }
+
+            // 清理过期尸体（可选，每秒检查一次）
+            if (mc.thePlayer.ticksExisted % 20 == 0 && corpseDetector != null) {
+                corpseDetector.cleanupOldCorpses(10000); // 清理10秒前的尸体
+            }
 
             // 警报检测
             if (config.murderAlarm) {
@@ -215,61 +196,25 @@ public class MurderHelperMod {
         }
     }
 
-    /**
-     * 检测并触发游戏开始
-     */
-    private void checkAndTriggerGameStart(EntityPlayer localPlayer) {
-        // 使用 GameStateManager 的方法，内部会调用 GameStateDetector
-        boolean gameStarted = gameState.checkAndTriggerGameStart(localPlayer, config.roleSlotIndex);
+    // ========== 游戏逻辑处理 ==========
 
-        if (gameStarted) {
-            // 游戏开始时，立即检查所有玩家的手持物品
-            forceCheckAllPlayers(localPlayer);
-        }
-    }
 
     /**
      * 监控其他玩家的手持物品变化
      */
     private void monitorOtherPlayers(EntityPlayer localPlayer) {
-        // 使用 GameStateDetector 获取Tab列表中的玩家，避免重复遍历
-        for (EntityPlayer player : Minecraft.getMinecraft().theWorld.playerEntities) {
+        for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (player == null || player == localPlayer) {
                 continue;
             }
 
             // 使用带缓存的Tab列表检查
-            if (!detector.isPlayerInTabList(player)) {
+            if (!isPlayerInTabList(player)) {
                 continue;
             }
 
             roleDetector.checkPlayerHeldItem(player);
         }
-    }
-
-    /**
-     * 强制检查所有玩家的手持物品
-     */
-    private void forceCheckAllPlayers(EntityPlayer localPlayer) {
-        if (localPlayer == null || Minecraft.getMinecraft().theWorld == null) {
-            return;
-        }
-
-        GameStateDetector detector = GameStateDetector.getInstance();
-        for (EntityPlayer player : Minecraft.getMinecraft().theWorld.playerEntities) {
-            if (player == null || player == localPlayer) {
-                continue;
-            }
-
-            if (!detector.isPlayerInTabList(player)) {
-                continue;
-            }
-
-            // 强制检测玩家角色（忽略缓存）
-            roleDetector.forceCheckPlayer(player);
-        }
-
-        logger.info("Game started, force checked all players");
     }
 
     /**
@@ -298,19 +243,31 @@ public class MurderHelperMod {
         );
 
         if (!message.trim().isEmpty()) {
-            Minecraft.getMinecraft().thePlayer.sendChatMessage(message);
+            mc.thePlayer.sendChatMessage(message);
             logger.debug("Auto-shout message sent for murderer: " + playerName);
         }
     }
+
 
     // ========== 数据清理 ==========
 
     /**
      * 清理游戏数据
      */
-    private void clearGameData() {
-        if (detector != null) {
-            detector.reset();
+    public static void clearGameData() {
+
+        tabListCache.clear();
+        lastTabListUpdate = 0;
+
+        if (corpseDetector != null) {
+            corpseDetector.reset();
+        }
+        if (suspectTracker != null) {
+            suspectTracker.reset();
+        }
+
+        if (weaponDetector != null) {
+            weaponDetector.clear();
         }
 
         if (playerTracker != null) {
@@ -336,13 +293,39 @@ public class MurderHelperMod {
         logger.info("Game data cleared!");
     }
 
+
     // ========== 公共静态方法 ==========
 
     /**
-     * 检查玩家是否在Tab列表中（向后兼容的包装方法）
+     * 检查玩家是否在Tab列表中（带缓存）
      */
     public static boolean isPlayerInTabList(EntityPlayer player) {
-        return GameStateDetector.getInstance().isPlayerInTabList(player);
+        if (player == null) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        if (now - lastTabListUpdate > GameConstants.TAB_LIST_CACHE_MS) {
+            updateTabListCache();
+            lastTabListUpdate = now;
+        }
+
+        return tabListCache.getOrDefault(player.getName(), false);
+    }
+
+    /**
+     * 更新Tab列表缓存
+     */
+    private static void updateTabListCache() {
+        tabListCache.clear();
+
+        if (mc.getNetHandler() == null) {
+            return;
+        }
+
+        for (NetworkPlayerInfo info : mc.getNetHandler().getPlayerInfoMap()) {
+            tabListCache.put(info.getGameProfile().getName(), true);
+        }
     }
 
     /**
@@ -377,11 +360,11 @@ public class MurderHelperMod {
      * 根据玩家名获取玩家实体
      */
     private EntityPlayer getPlayerByName(String playerName) {
-        if (Minecraft.getMinecraft().theWorld == null) {
+        if (mc.theWorld == null) {
             return null;
         }
 
-        for (EntityPlayer player : Minecraft.getMinecraft().theWorld.playerEntities) {
+        for (EntityPlayer player : mc.theWorld.playerEntities) {
             if (player != null && player.getName().equals(playerName)) {
                 return player;
             }
@@ -390,55 +373,6 @@ public class MurderHelperMod {
         return null;
     }
 
-    /**
-     * 手动启动游戏状态（用于没有地图的服务器）
-     * 通过 /mh startmurder 命令调用
-     */
-    public static void manuallyStartGame() {
-        // 设置游戏状态为活跃
-        gameState.setInGame(true);
-        logger.info("Game manually activated via command");
-
-        // 如果游戏还没真正开始，触发游戏开始
-        if (!gameState.isGameActuallyStarted()) {
-            gameState.triggerGameStart("Manual start via command");
-
-            // 立即检测所有玩家的角色
-            EntityPlayer localPlayer = Minecraft.getMinecraft().thePlayer;
-            if (localPlayer == null || Minecraft.getMinecraft().theWorld == null) {
-                return;
-            }
-
-            // 检测自己的角色
-            ItemStack roleSlotItem = localPlayer.inventory.getStackInSlot(config.roleSlotIndex);
-            if (roleSlotItem != null) {
-                String detectedRole;
-                if (ItemClassifier.isBow(roleSlotItem)) {
-                    detectedRole = "Detective";
-                } else if (ItemClassifier.isMurderWeapon(roleSlotItem)) {
-                    detectedRole = "Murderer";
-                } else {
-                    detectedRole = "Innocent";
-                }
-                gameState.setMyRole(detectedRole);
-                logger.info("Manual role detection: " + detectedRole);
-            }
-
-            // 检测其他玩家
-            GameStateDetector detector = GameStateDetector.getInstance();
-            for (EntityPlayer player : Minecraft.getMinecraft().theWorld.playerEntities) {
-                if (player == null || player == localPlayer) {
-                    continue;
-                }
-
-                if (!detector.isPlayerInTabList(player)) {
-                    continue;
-                }
-
-                roleDetector.forceCheckPlayer(player);
-            }
-        }
-    }
 
     /**
      * 保存配置（便捷方法）
