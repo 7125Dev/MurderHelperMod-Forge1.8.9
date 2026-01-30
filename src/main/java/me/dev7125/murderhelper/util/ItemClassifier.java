@@ -77,25 +77,43 @@ public class ItemClassifier {
 
         NBTTagCompound nbt = item.getTagCompound();
 
-        // 首先判断是否有 ExtraAttributes.MELEE 标识
+        // 1: ExtraAttributes.MELEE：最明确的特征
         if (nbt.hasKey("ExtraAttributes", Constants.NBT.TAG_COMPOUND)) {
             NBTTagCompound extraAttr = nbt.getCompoundTag("ExtraAttributes");
             if (extraAttr.hasKey("MELEE", Constants.NBT.TAG_BYTE)) {
-                //MELEE=1是武器，MELEE=0是kali诅咒之剑
+                // MELEE=1是武器
                 return extraAttr.getBoolean("MELEE");
             }
         }
 
-        // 接着判断如果是 minecraft:iron_sword 并且有 display 的 NBT
-        if (item.getItem().getRegistryName().equals("minecraft:iron_sword")) {
-            printItemStackInfo(item);
-            if (nbt.hasKey("display", Constants.NBT.TAG_COMPOUND)) {
-                return true;
+        // 2: minecraft:iron_sword + display NBT
+        if (!"minecraft:iron_sword".equals(item.getItem().getRegistryName())) {
+            return false;
+        }
+
+        if (!nbt.hasKey("display", Constants.NBT.TAG_COMPOUND)) {
+            return false;
+        }
+
+        NBTTagCompound display = nbt.getCompoundTag("display");
+
+        // 3: 排除Kali诅咒之剑：lore只有1行 + 名字以§c开头 + lore以§7开头
+        if (display.hasKey("Lore", Constants.NBT.TAG_LIST)
+                && display.hasKey("Name", Constants.NBT.TAG_STRING)) {
+            NBTTagList lore = display.getTagList("Lore", Constants.NBT.TAG_STRING);
+            String name = display.getString("Name");
+
+            if (lore.tagCount() == 1) {
+                String loreLine = lore.getStringTagAt(0);
+                // 名字以§c开头 且 lore以§7开头
+                if (name.startsWith("§c") && loreLine.startsWith("§7")) {
+                    return false; // Kali诅咒之剑
+                }
             }
         }
 
-        // 其他情况返回 false
-        return false;
+        // 4: 其他有display NBT的iron_sword都是武器
+        return true;
     }
 
     // 打印完整的ItemStack信息

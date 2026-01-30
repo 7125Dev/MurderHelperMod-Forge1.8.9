@@ -2,17 +2,14 @@ package me.dev7125.murderhelper.core.listener;
 
 import me.dev7125.murderhelper.MurderHelperMod;
 import me.dev7125.murderhelper.core.annotation.PacketListener;
-import me.dev7125.murderhelper.game.KnifeThrownDetector;
-import me.dev7125.murderhelper.game.BowShotDetector;
-import me.dev7125.murderhelper.game.CorpseDetector;
-import me.dev7125.murderhelper.game.SuspectTracker;
+import me.dev7125.murderhelper.game.*;
 import net.minecraft.network.play.server.*;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 数据包监听器 - 直接通过数据包判断游戏状态和飞刀/弓箭/尸体/嫌疑人状态
+ * 数据包监听器 - 直接通过数据包判断游戏状态和飞刀/弓箭/尸体/嫌疑人/角色状态
  */
 public class MurderMysteryGameListener {
     private final Map<String, Set<String>> teams = new HashMap<>();
@@ -30,15 +27,25 @@ public class MurderMysteryGameListener {
     // 嫌疑人追踪器实例
     private final SuspectTracker suspectTracker;
 
+    // 角色检测器实例
+    private final RoleDetector roleDetector;
+
+    // 侦探弓掉落检测器实例
+    private final BowDropDetector bowDropDetector;
+
     public MurderMysteryGameListener(
             KnifeThrownDetector weaponDetector,
             BowShotDetector bowDetector,
             CorpseDetector corpseDetector,
-            SuspectTracker suspectTracker) {
+            SuspectTracker suspectTracker,
+            RoleDetector roleDetector,
+            BowDropDetector bowDropDetector) {
         this.weaponDetector = weaponDetector;
         this.bowDetector = bowDetector;
         this.corpseDetector = corpseDetector;
         this.suspectTracker = suspectTracker;
+        this.roleDetector = roleDetector;
+        this.bowDropDetector = bowDropDetector;
     }
 
     // ==================== 游戏状态检测 ====================
@@ -61,7 +68,7 @@ public class MurderMysteryGameListener {
                 .flatMap(entry -> entry.getValue().stream())
                 .collect(Collectors.toSet());
 
-        if (hideNamePlayers.contains(MurderHelperMod.playerName)) {
+        if (hideNamePlayers.contains(MurderHelperMod.getLocalPlayerName())) {
             // 名字被隐藏 = 游戏开始
             MurderHelperMod.gameState.onGameStart();
         } else {
@@ -72,42 +79,85 @@ public class MurderMysteryGameListener {
 
     @PacketListener(S01PacketJoinGame.class)
     public void listenS01PacketJoinGame(S01PacketJoinGame packet) {
-        // 收到这个数据包表示：
+        // 收到这个数据包表示:
         // 1. 刚进入服务器 -> 应该进入 PREPARING 状态
-        // 2. 被传送到新的游戏世界（上一局游戏已结束）-> 应该进入 PREPARING 状态
+        // 2. 被传送到新的游戏世界(上一局游戏已结束) -> 应该进入 PREPARING 状态
 
         MurderHelperMod.logger.info("teamName:{}", teamName);
         teams.clear();
         teamName.clear();
 
-        // 重置游戏数据，但设置为 PREPARING 状态（而不是 IDLE）
+        // 重置游戏数据,但设置为 PREPARING 状态(而不是 IDLE)
         MurderHelperMod.gameState.onGamePreparing();
         MurderHelperMod.clearGameData();
 
         MurderHelperMod.logger.info("[Packet] Joined game world, entering PREPARING state");
     }
 
-    // ==================== 飞刀和弓箭检测数据包监听 ====================
+    // ==================== 角色检测数据包监听 ====================
 
     /**
      * 监听实体装备数据包
-     * 检测玩家装备/卸下飞刀和弓箭，以及盔甲架装备飞刀/尸体头部
+     * 检测其他玩家的角色变化
+     * 同时检测玩家装备/卸下飞刀和弓箭,以及盔甲架装备飞刀/尸体头部
      */
     @PacketListener(S04PacketEntityEquipment.class)
     public void listenS04PacketEntityEquipment(S04PacketEntityEquipment packet) {
+        // 角色检测器处理(其他玩家)
+        // 通过主手装备(slot 0)检测其他玩家的角色
+        roleDetector.handleEntityEquipment(packet);
+
+        // 武器检测器处理(飞刀检测)
         weaponDetector.handleEntityEquipment(packet);
+
+        // 弓箭检测器处理
         bowDetector.handleEntityEquipment(packet);
+
+//        // 掉落弓检测器处理
+        bowDropDetector.handleEntityEquipment(packet);
+
+        // 尸体检测器处理(头部装备)
         corpseDetector.handleEntityEquipment(packet);
     }
 
     /**
+     * 监听槽位设置数据包
+     * 检测本地玩家的主手物品变化(用于角色检测)
+     */
+    @PacketListener(S2FPacketSetSlot.class)
+    public void listenS2FPacketSetSlot(S2FPacketSetSlot packet) {
+        roleDetector.handleSetSlot(packet);
+    }
+
+    /**
+     * 监听窗口物品数据包
+     * 检测本地玩家的物品栏初始化(用于角色检测)
+     */
+    @PacketListener(S30PacketWindowItems.class)
+    public void listenS30PacketWindowItems(S30PacketWindowItems packet) {
+        roleDetector.handleWindowItems(packet);
+    }
+
+    /**
+     * 监听手持物品切换数据包
+     * 检测本地玩家切换手持物品(用于角色检测)
+     */
+    @PacketListener(S09PacketHeldItemChange.class)
+    public void listenS09PacketHeldItemChange(S09PacketHeldItemChange packet) {
+        roleDetector.handleHeldItemChange(packet);
+    }
+
+    // ==================== 飞刀和弓箭检测数据包监听 ====================
+
+    /**
      * 监听生成对象数据包
-     * 检测盔甲架（飞刀投掷物/尸体）和箭矢的创建
+     * 检测盔甲架(飞刀投掷物/尸体)和箭矢的创建
      */
     @PacketListener(S0EPacketSpawnObject.class)
     public void listenS0EPacketSpawnObject(S0EPacketSpawnObject packet) {
         weaponDetector.handleSpawnObject(packet);
         bowDetector.handleSpawnObject(packet);
+        bowDropDetector.handleSpawnObject(packet);
         corpseDetector.handleSpawnObject(packet);
     }
 
@@ -119,6 +169,7 @@ public class MurderMysteryGameListener {
     public void listenS1CPacketEntityMetadata(S1CPacketEntityMetadata packet) {
         weaponDetector.handleEntityMetadata(packet);
         bowDetector.handleEntityMetadata(packet);
+        bowDropDetector.handleEntityMetadata(packet);
         corpseDetector.handleEntityMetadata(packet);
     }
 
@@ -130,6 +181,7 @@ public class MurderMysteryGameListener {
     public void listenS15PacketEntityRelMove(S14PacketEntity.S15PacketEntityRelMove packet) {
         weaponDetector.handleEntityRelMove(packet);
         bowDetector.handleEntityRelMove(packet);
+        bowDropDetector.handleEntityRelMove(packet);
     }
 
     /**
@@ -140,6 +192,7 @@ public class MurderMysteryGameListener {
     public void listenS18PacketEntityTeleport(S18PacketEntityTeleport packet) {
         weaponDetector.handleEntityTeleport(packet);
         bowDetector.handleEntityTeleport(packet);
+        bowDropDetector.handleEntityTeleport(packet);
     }
 
     /**
@@ -150,12 +203,13 @@ public class MurderMysteryGameListener {
     public void listenS13PacketDestroyEntities(S13PacketDestroyEntities packet) {
         weaponDetector.handleDestroyEntities(packet);
         bowDetector.handleDestroyEntities(packet);
+        bowDropDetector.handleDestroyEntities(packet);
         corpseDetector.handleDestroyEntities(packet);
     }
 
     /**
      * 监听实体属性数据包
-     * 检测移动速度减少（持刀减速效果）
+     * 检测移动速度减少(持刀减速效果)
      */
     @PacketListener(S20PacketEntityProperties.class)
     public void listenS20PacketEntityProperties(S20PacketEntityProperties packet) {
@@ -180,5 +234,26 @@ public class MurderMysteryGameListener {
     @PacketListener(S0APacketUseBed.class)
     public void listenS0APacketUseBed(S0APacketUseBed packet) {
         corpseDetector.handleUseBed(packet);
+    }
+
+
+    // ==================== 陷阱杀死检测 ====================
+
+    /**
+     * 监听音效数据包
+     * 检测陷阱杀死事件(mob.skeleton.death音效)
+     */
+    @PacketListener(S29PacketSoundEffect.class)
+    public void listenS29PacketSoundEffect(S29PacketSoundEffect packet) {
+        if (!MurderHelperMod.isGameActuallyStarted()) return;
+
+        String soundName = packet.getSoundName();
+
+        // 检测骷髅死亡音效,表明是陷阱杀死
+        // 检测村民死亡音效，表明是被误杀
+        if ("mob.skeleton.death".equals(soundName) || "mob.villager.death".equals(soundName)) {
+            MurderHelperMod.logger.info("[TrapKill] Detected trap kill sound effect");
+            suspectTracker.onAccidentallyKilled();
+        }
     }
 }

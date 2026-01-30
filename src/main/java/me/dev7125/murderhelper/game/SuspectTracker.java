@@ -11,6 +11,7 @@ import java.util.*;
 /**
  * 嫌疑人追踪器
  * 负责根据尸体位置和玩家位置判定嫌疑人
+ * 注意:此类只负责收集嫌疑人数据,具体角色状态由RoleDetector管理
  */
 public class SuspectTracker {
 
@@ -18,12 +19,16 @@ public class SuspectTracker {
     private final PlayerTracker playerTracker;
     private final CorpseDetector corpseDetector;
 
-    // 嫌疑人集合（玩家名 -> 成为嫌疑人的时间戳）
+    // 嫌疑人集合(玩家名 -> 成为嫌疑人的时间戳)
     private final Map<String, Long> suspects = new HashMap<>();
 
     // 嫌疑人判定配置
-    private static final double SUSPECT_RANGE = 30.0;      // 尸体周围10格
+    private static final double SUSPECT_RANGE = 30.0;      // 尸体周围30格
     private static final long SUSPECT_TIME_WINDOW = 5000;  // 5秒内
+
+    // 陷阱杀死记录(时间戳)
+    private long lastAccidentallyKilledTime = 0;
+    private static final long ACCIDENTALLY_KILLED_GRACE_PERIOD = 3000; // 陷阱杀死后3秒内不判定嫌疑人
 
     public SuspectTracker(Logger logger, PlayerTracker playerTracker, CorpseDetector corpseDetector) {
         this.logger = logger;
@@ -32,10 +37,35 @@ public class SuspectTracker {
     }
 
     /**
-     * 更新嫌疑人列表（每tick调用）
+     * 记录意外死亡事件(通过骷髅和村民死亡音效检测)
+     * 在检测到mob.skeleton.death和mob.villager.death音效时调用
+     */
+    public void onAccidentallyKilled() {
+        lastAccidentallyKilledTime = System.currentTimeMillis();
+        logger.info("Trap kill detected, suspending suspect marking for {} ms", ACCIDENTALLY_KILLED_GRACE_PERIOD);
+    }
+
+    /**
+     * 检查当前是否在陷阱杀死的宽限期内
+     */
+    private boolean isInTrapKillGracePeriod() {
+        return System.currentTimeMillis() - lastAccidentallyKilledTime < ACCIDENTALLY_KILLED_GRACE_PERIOD;
+    }
+
+    /**
+     * 更新嫌疑人列表(每tick调用)
      * 检查所有玩家是否在最近的尸体附近
      */
     public void updateSuspects() {
+        // 如果嫌疑人检测关闭，清除嫌疑人并返回
+        if (!MurderHelperMod.config.suspectDetection) {
+            if (!suspects.isEmpty()) {
+                suspects.clear();
+                playerTracker.rollbackPlayerRole();
+            }
+            return;
+        }
+
         Minecraft mc = Minecraft.getMinecraft();
         if (mc.theWorld == null || mc.thePlayer == null) {
             return;
@@ -45,6 +75,7 @@ public class SuspectTracker {
         if (myRole == MurderHelperMod.PlayerRole.MURDERER) {
             if (!suspects.isEmpty()) {
                 suspects.clear();
+                playerTracker.rollbackPlayerRole();
             }
             return;
         }
@@ -53,7 +84,13 @@ public class SuspectTracker {
             if (!suspects.isEmpty()) {
                 logger.info("Murderer already locked, clearing all suspects.");
                 suspects.clear();
+                playerTracker.rollbackPlayerRole();
             }
+            return;
+        }
+
+        // 如果在陷阱杀死宽限期内,不判定嫌疑人
+        if (isInTrapKillGracePeriod()) {
             return;
         }
 
@@ -110,8 +147,13 @@ public class SuspectTracker {
             return false;
         }
 
-        // 已知的凶手不再是"嫌疑人"（已经确认了）
+        // 已知的凶手不再是"嫌疑人"(已经确认了)
         if (role == MurderHelperMod.PlayerRole.MURDERER) {
+            return false;
+        }
+
+        // 已经是嫌疑人的不再重复判定
+        if (role == MurderHelperMod.PlayerRole.SUSPECT) {
             return false;
         }
 
@@ -132,38 +174,12 @@ public class SuspectTracker {
                     corpse.position.xCoord,
                     corpse.position.yCoord,
                     corpse.position.zCoord);
-        }
-    }
 
-    /**
-     * 检查玩家是否是嫌疑人
-     */
-    public boolean isSuspect(String playerName) {
-        // 如果本地玩家是杀手，不显示任何嫌疑人
-        Minecraft mc = Minecraft.getMinecraft();
-        if (mc.thePlayer != null) {
-            MurderHelperMod.PlayerRole myRole = MurderHelperMod.gameState.getMyRole();
-            if (myRole == MurderHelperMod.PlayerRole.MURDERER) {
-                return false;
+            // 通知RoleDetector更新角色
+            if (MurderHelperMod.roleDetector != null) {
+                MurderHelperMod.roleDetector.markAsSuspect(playerName);
             }
         }
-
-        return suspects.containsKey(playerName);
-    }
-
-    /**
-     * 检查玩家实体是否是嫌疑人
-     */
-    public boolean isSuspect(EntityPlayer player) {
-        if (player == null) {
-            return false;
-        }
-        MurderHelperMod.PlayerRole myRole = MurderHelperMod.gameState.getMyRole();
-        if (myRole == MurderHelperMod.PlayerRole.MURDERER) {
-            return false;
-        }
-
-        return suspects.containsKey(player.getName());
     }
 
     /**
@@ -174,25 +190,26 @@ public class SuspectTracker {
     }
 
     /**
-     * 当找到凶手时，清除所有嫌疑人
+     * 当找到凶手时,清除所有嫌疑人
      */
     public void onMurdererFound(String murdererName) {
         if (!suspects.isEmpty()) {
             logger.info("Murderer found: {}. Clearing all suspects.", murdererName);
             suspects.clear();
+            playerTracker.rollbackPlayerRole();
         }
     }
 
     /**
      * 监听玩家角色变化
-     * 如果某个嫌疑人被确认为凶手，清除所有嫌疑人
+     * 如果某个嫌疑人被确认为凶手,清除所有嫌疑人
      */
     public void onPlayerRoleChanged(String playerName, MurderHelperMod.PlayerRole newRole) {
         if (newRole == MurderHelperMod.PlayerRole.MURDERER) {
             onMurdererFound(playerName);
         }
 
-        // 如果角色变为侦探，从嫌疑人列表移除
+        // 如果角色变为侦探,从嫌疑人列表移除
         if (newRole == MurderHelperMod.PlayerRole.DETECTIVE) {
             if (suspects.remove(playerName) != null) {
                 logger.info("Player {} removed from suspects (now detective)", playerName);
@@ -201,7 +218,7 @@ public class SuspectTracker {
     }
 
     /**
-     * 清理过期的嫌疑人记录（可选，当前版本保持嫌疑人状态直到游戏结束或找到凶手）
+     * 清理过期的嫌疑人记录(可选,当前版本保持嫌疑人状态直到游戏结束或找到凶手)
      */
     public void cleanupOldSuspects(long maxAgeMs) {
         long now = System.currentTimeMillis();
@@ -213,6 +230,7 @@ public class SuspectTracker {
      */
     public void reset() {
         suspects.clear();
+        lastAccidentallyKilledTime = 0;
     }
 
     /**

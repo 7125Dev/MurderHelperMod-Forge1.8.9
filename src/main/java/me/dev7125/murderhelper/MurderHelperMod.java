@@ -7,12 +7,10 @@ import me.dev7125.murderhelper.core.listener.PacketListenerRegistry;
 import me.dev7125.murderhelper.feature.AlarmSystem;
 import me.dev7125.murderhelper.feature.ShoutMessageBuilder;
 import me.dev7125.murderhelper.game.*;
-import me.dev7125.murderhelper.handler.BowDropTracker;
-import me.dev7125.murderhelper.handler.HUDHandler;
-import me.dev7125.murderhelper.handler.RenderHandler;
-import me.dev7125.murderhelper.util.GameConstants;
+import me.dev7125.murderhelper.handler.BowDropRenderHandler;
+import me.dev7125.murderhelper.handler.HUDRenderHandler;
+import me.dev7125.murderhelper.handler.NameTagsRenderHandler;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.network.NetworkPlayerInfo;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraftforge.common.MinecraftForge;
@@ -26,8 +24,6 @@ import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.apache.logging.log4j.Logger;
 
 import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
 
 @Mod(modid = MurderHelperMod.MODID, version = MurderHelperMod.VERSION, name = MurderHelperMod.NAME,
         clientSideOnly = true, guiFactory = "me.dev7125.murderhelper.gui.ModGuiFactory")
@@ -35,7 +31,7 @@ public class MurderHelperMod {
 
     // ========== 模组信息 ==========
     public static final String MODID = "murderhelper";
-    public static final String VERSION = "1.0.3";
+    public static final String VERSION = "1.0.4";
     public static final String NAME = "MurderHelperMod";
 
     // ========== 玩家角色枚举 ==========
@@ -54,15 +50,13 @@ public class MurderHelperMod {
     public static RoleDetector roleDetector;
     public static AlarmSystem alarmSystem;
     public static Logger logger;
-    public static HUDHandler hudHandler;
-    public static BowDropTracker bowDropTracker;
+    public static HUDRenderHandler hudHandler;
+    public static BowDropRenderHandler bowDropRenderHandler;
     public static KnifeThrownDetector weaponDetector;
     public static BowShotDetector bowShotDetector;
     public static CorpseDetector corpseDetector;
     public static SuspectTracker suspectTracker;
-
-    private static Map<String, Boolean> tabListCache = new HashMap<>();
-    private static long lastTabListUpdate = 0;
+    public static BowDropDetector bowDropDetector;
 
     public static String playerName;
 
@@ -90,11 +84,12 @@ public class MurderHelperMod {
         gameState = new GameStateManager(logger);
         roleDetector = new RoleDetector(logger, gameState, playerTracker);
         alarmSystem = new AlarmSystem();
-        bowDropTracker = new BowDropTracker();
+        bowDropRenderHandler = new BowDropRenderHandler();
         weaponDetector = new KnifeThrownDetector();
-        bowShotDetector = new BowShotDetector();
+        bowShotDetector = new BowShotDetector(playerTracker);
         corpseDetector = new CorpseDetector(logger);
         suspectTracker = new SuspectTracker(logger, playerTracker, corpseDetector);
+        bowDropDetector = new BowDropDetector();
 
 
         // 设置角色变化回调（用于自动喊话）
@@ -102,11 +97,11 @@ public class MurderHelperMod {
 
         // 注册事件处理器
         MinecraftForge.EVENT_BUS.register(this);
-        MinecraftForge.EVENT_BUS.register(new RenderHandler());
-        MinecraftForge.EVENT_BUS.register(bowDropTracker);
+        MinecraftForge.EVENT_BUS.register(new NameTagsRenderHandler());
+        MinecraftForge.EVENT_BUS.register(bowDropRenderHandler);
 
         // 初始化并注册HUD处理器
-        hudHandler = new HUDHandler(weaponDetector, bowShotDetector);
+        hudHandler = new HUDRenderHandler(weaponDetector, bowShotDetector);
         MinecraftForge.EVENT_BUS.register(hudHandler);
 
         // 从配置文件加载HUD窗口位置
@@ -125,7 +120,7 @@ public class MurderHelperMod {
 
         //注册数据包监听器
         PacketListenerRegistry.register(new MurderMysteryGameListener(weaponDetector, bowShotDetector, corpseDetector,
-                suspectTracker));
+                suspectTracker, roleDetector, bowDropDetector));
         logger.info("MurderMysteryGameListener registered!");
     }
 
@@ -165,23 +160,22 @@ public class MurderHelperMod {
 
         //检测凶手武器状态
         weaponDetector.tick();
+        bowShotDetector.update();
 
         // 更新游戏状态管理器
         gameState.tick();
 
 
-        // 只有在游戏真正开始且过了延迟时间后才检测角色
+        // 只有在游戏真正开始且过了延迟时间后才进行其他检测
         if (gameState.isGameActuallyStarted() && gameState.shouldCheckRoles()) {
-
-            // 检测自己的角色
-            roleDetector.detectMyRole(localPlayer, config.roleSlotIndex);
-
-            // 监控其他玩家
-            monitorOtherPlayers(localPlayer);
 
             // 嫌疑人检测
             if (suspectTracker != null) {
                 suspectTracker.updateSuspects();
+            }
+
+            if (bowDropDetector != null) {
+                bowDropDetector.onClientTick();
             }
 
             // 清理过期尸体（可选，每秒检查一次）
@@ -200,29 +194,11 @@ public class MurderHelperMod {
 
 
     /**
-     * 监控其他玩家的手持物品变化
-     */
-    private void monitorOtherPlayers(EntityPlayer localPlayer) {
-        for (EntityPlayer player : mc.theWorld.playerEntities) {
-            if (player == null || player == localPlayer) {
-                continue;
-            }
-
-            // 使用带缓存的Tab列表检查
-            if (!isPlayerInTabList(player)) {
-                continue;
-            }
-
-            roleDetector.checkPlayerHeldItem(player);
-        }
-    }
-
-    /**
      * 角色变化回调（用于自动喊话）
      */
     private void handleRoleChange(String playerName, PlayerRole newRole, ItemStack weapon) {
         // 只对杀手喊话
-        if (!config.shoutEnabled || !gameState.isInGame() || newRole != PlayerRole.MURDERER) {
+        if (!config.shoutEnabled || !gameState.isGameActuallyStarted() || newRole != PlayerRole.MURDERER) {
             return;
         }
 
@@ -255,10 +231,6 @@ public class MurderHelperMod {
      * 清理游戏数据
      */
     public static void clearGameData() {
-
-        tabListCache.clear();
-        lastTabListUpdate = 0;
-
         if (corpseDetector != null) {
             corpseDetector.reset();
         }
@@ -282,8 +254,12 @@ public class MurderHelperMod {
             roleDetector.reset();
         }
 
-        if (bowDropTracker != null) {
-            bowDropTracker.clear();
+        if (bowDropDetector != null) {
+            bowDropDetector.clear();
+        }
+
+        if (bowDropRenderHandler != null) {
+            bowDropRenderHandler.clear();
         }
 
         if (alarmSystem != null) {
@@ -295,38 +271,6 @@ public class MurderHelperMod {
 
 
     // ========== 公共静态方法 ==========
-
-    /**
-     * 检查玩家是否在Tab列表中（带缓存）
-     */
-    public static boolean isPlayerInTabList(EntityPlayer player) {
-        if (player == null) {
-            return false;
-        }
-
-        long now = System.currentTimeMillis();
-        if (now - lastTabListUpdate > GameConstants.TAB_LIST_CACHE_MS) {
-            updateTabListCache();
-            lastTabListUpdate = now;
-        }
-
-        return tabListCache.getOrDefault(player.getName(), false);
-    }
-
-    /**
-     * 更新Tab列表缓存
-     */
-    private static void updateTabListCache() {
-        tabListCache.clear();
-
-        if (mc.getNetHandler() == null) {
-            return;
-        }
-
-        for (NetworkPlayerInfo info : mc.getNetHandler().getPlayerInfoMap()) {
-            tabListCache.put(info.getGameProfile().getName(), true);
-        }
-    }
 
     /**
      * 判断某个玩家是否是敌人
@@ -371,6 +315,18 @@ public class MurderHelperMod {
         }
 
         return null;
+    }
+
+    /**
+     * 获取本地玩家的实际游戏名
+     * 动态获取，支持 alts 登录模组切换账号后的正确名称
+     */
+    public static String getLocalPlayerName() {
+        if (mc.thePlayer != null) {
+            return mc.thePlayer.getName();
+        }
+        // 玩家实体未加载时回退到 session 用户名
+        return playerName;
     }
 
 

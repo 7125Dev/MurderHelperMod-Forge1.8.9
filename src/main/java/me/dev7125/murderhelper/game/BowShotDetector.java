@@ -25,6 +25,9 @@ public class BowShotDetector {
 
     private final Minecraft mc;
 
+    // PlayerTracker 引用（用于更新角色）
+    private final PlayerTracker playerTracker;
+
     // 玩家弓箭信息映射 <玩家名, BowInfo>
     private final Map<String, BowInfo> bowByPlayer = new ConcurrentHashMap<>();
 
@@ -44,14 +47,15 @@ public class BowShotDetector {
 
     private int cleanupCounter = 0;
 
-    public BowShotDetector() {
+    public BowShotDetector(PlayerTracker playerTracker) {
         this.mc = Minecraft.getMinecraft();
+        this.playerTracker = playerTracker;
     }
 
     /**
      * 弓箭信息类
      */
-    public static class BowInfo {
+    public class BowInfo {
         public String playerName;
         public int playerEntityId;
 
@@ -118,8 +122,6 @@ public class BowShotDetector {
                     this.drawState = DrawState.NONE;
                     this.drawStartTime = 0;
                 }
-
-                MurderHelperMod.logger.info("[BowDetector] {} holding: {}", playerName, state);
             }
         }
 
@@ -132,11 +134,23 @@ public class BowShotDetector {
                 drawStartTime = System.currentTimeMillis();
                 lastStateChange = System.currentTimeMillis();
 
-                // 如果是普通弓，且之前处于SHOT状态，拉弓动作表示还有箭
-                if (shotState == ShotState.SHOT && bowCategory == ItemClassifier.BowCategory.NORMAL_BOW) {
-                    shotState = ShotState.READY;
-                    MurderHelperMod.logger.info("[BowDetector] {} normal bow recovered (started drawing)",
-                            playerName);
+                // 如果是普通弓，拉弓动作表示还有箭
+                if (bowCategory == ItemClassifier.BowCategory.NORMAL_BOW) {
+                    MurderHelperMod.PlayerRole currentRole = playerTracker.getPlayerRole(playerName);
+
+                    // 如果之前处于SHOT状态，拉弓表示还有箭
+                    if (shotState == ShotState.SHOT) {
+                        shotState = ShotState.READY;
+                        MurderHelperMod.logger.info("[BowDetector] {} normal bow recovered (started drawing)",
+                                playerName);
+                    }
+
+                    // 如果当前是INNOCENT，恢复成SHOOTER（因为能拉弓说明还有箭）
+                    if (currentRole == MurderHelperMod.PlayerRole.INNOCENT) {
+                        playerTracker.updatePlayerRole(playerName, MurderHelperMod.PlayerRole.SHOOTER);
+                        MurderHelperMod.logger.info("[BowDetector] {} recovered to SHOOTER (has arrows)",
+                                playerName);
+                    }
                 }
 
                 MurderHelperMod.logger.debug("[BowDetector] {} started drawing bow", playerName);
@@ -166,12 +180,27 @@ public class BowShotDetector {
 
             // 根据弓类型设置射击状态
             ShotState oldState = this.shotState;
+
+            // 防止 bowCategory 为 null 时抛出 NullPointerException
+            if (bowCategory == null) {
+                MurderHelperMod.logger.warn("[BowDetector] {} shot arrow but bowCategory is null", playerName);
+                return;
+            }
+
             switch (bowCategory) {
                 case DETECTIVE_BOW:
                     this.shotState = ShotState.COOLDOWN;
                     break;
                 case NORMAL_BOW:
                     this.shotState = ShotState.SHOT;
+
+                    // 普通弓射击后，将SHOOTER角色改为INNOCENT（箭用完了）
+                    MurderHelperMod.PlayerRole currentRole = playerTracker.getPlayerRole(playerName);
+                    if (currentRole == MurderHelperMod.PlayerRole.SHOOTER) {
+                        playerTracker.updatePlayerRole(playerName, MurderHelperMod.PlayerRole.INNOCENT);
+                        MurderHelperMod.logger.info("[BowDetector] {} changed from SHOOTER to INNOCENT (shot arrow)",
+                                playerName);
+                    }
                     break;
                 case KALI_BOW:
                     // Kali弓无限箭，保持READY状态
@@ -471,13 +500,19 @@ public class BowShotDetector {
                 // 装备了弓
                 info.updateBow(itemStack, registryName);
                 info.setHoldingState(HoldingState.HOLDING);
-                MurderHelperMod.logger.info("[BowDetector] {} equipped bow: {} ({})",
-                        playerName, category, registryName);
+
+                //将平民更新为弓箭手
+                MurderHelperMod.PlayerRole playerRole = playerTracker.getPlayerRole(playerName);
+                if (playerRole == MurderHelperMod.PlayerRole.INNOCENT &&  //是平民
+                        info.getShotState() != ShotState.SHOT && //没有射出箭
+                        (category == ItemClassifier.BowCategory.NORMAL_BOW ||
+                         category == ItemClassifier.BowCategory.KALI_BOW)) { //是普通弓或KALI弓
+                    playerTracker.updatePlayerRole(playerName, MurderHelperMod.PlayerRole.SHOOTER);
+                }
             } else {
                 // 卸下弓或装备其他物品
                 if (info.getBowStack() != null) {
                     info.setHoldingState(HoldingState.NOT_HOLDING);
-                    MurderHelperMod.logger.info("[BowDetector] {} unequipped bow", playerName);
                 }
             }
 

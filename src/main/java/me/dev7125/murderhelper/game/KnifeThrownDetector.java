@@ -235,18 +235,11 @@ public class KnifeThrownDetector {
             // 玩家装备/卸下飞刀 - 使用标准检测
             boolean isKnife = ItemClassifier.isMurderWeapon(itemStack);
             String registryName = getItemRegistryName(itemStack);
-            MurderHelperMod.logger.info("[WeaponDetector] Player {} equipment change: isKnife={}, item={}",
-                    playerName, isKnife, registryName);
             handlePlayerEquipment(playerName, entityId, isKnife, registryName);
         } else {
             // 盔甲架装备物品 - 只检查是否是待确认的盔甲架
             if (pendingArmorStands.containsKey(entityId) && itemStack != null) {
                 String registryName = getItemRegistryName(itemStack);
-
-                // 对盔甲架：只要装备了物品就尝试匹配
-                // 通过物品注册名来判断是否和某个持刀玩家的武器一致
-                MurderHelperMod.logger.info("[WeaponDetector] ArmorStand {} equipped item: {}",
-                        entityId, registryName);
                 handleArmorStandEquipment(entityId, registryName);
             }
         }
@@ -269,9 +262,6 @@ public class KnifeThrownDetector {
 
             pendingArmorStands.put(entityId,
                     new PendingArmorStand(System.currentTimeMillis(), position));
-
-            MurderHelperMod.logger.info("[WeaponDetector] ArmorStand spawned: {} at {}",
-                    entityId, position);
         }
     }
 
@@ -322,8 +312,6 @@ public class KnifeThrownDetector {
                     packet.getZ() / 32.0
             );
             info.projectile.position = newPos;
-            MurderHelperMod.logger.info("[WeaponDetector] Projectile {} teleported to {}",
-                    entityId, newPos);
         }
     }
 
@@ -338,16 +326,11 @@ public class KnifeThrownDetector {
             // 移除投掷物
             WeaponInfo info = weaponByArmorStand.remove(entityId);
             if (info != null) {
-                MurderHelperMod.logger.info("[WeaponDetector] Projectile {} destroyed for player {}",
-                        entityId, info.playerName);
                 info.setProjectile(null);
             }
 
             // 清理待确认盔甲架
-            PendingArmorStand removed = pendingArmorStands.remove(entityId);
-            if (removed != null) {
-                MurderHelperMod.logger.info("[WeaponDetector] Pending ArmorStand {} removed", entityId);
-            }
+            pendingArmorStands.remove(entityId);
         }
     }
 

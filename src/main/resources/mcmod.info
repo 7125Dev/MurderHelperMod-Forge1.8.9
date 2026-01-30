@@ -2,7 +2,8 @@
 {
   "modid": "murderhelper",
   "name": "MurderHelperMod",
-"description": "A helper mod for Murder Mystery game mode with role detection, enemy alerts, automatic callouts",  "version": "1.0.3",
+  "description": "Hypixel Murder Mystery assistant mod. Features include automatic role detection (Murderer/Detective/Suspect), colored nametag rendering, enemy HUD display, bow drop ESP, proximity alarm, and auto callout system.",
+  "version": "1.0.4",
   "mcversion": "1.8.9",
   "url": "",
   "updateUrl": "",

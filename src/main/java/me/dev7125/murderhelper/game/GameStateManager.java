@@ -2,7 +2,15 @@ package me.dev7125.murderhelper.game;
 
 import me.dev7125.murderhelper.MurderHelperMod;
 import me.dev7125.murderhelper.util.GameConstants;
+import net.minecraft.client.network.NetworkPlayerInfo;
+import net.minecraft.entity.player.EntityPlayer;
 import org.apache.logging.log4j.Logger;
+
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 游戏状态管理器（简化版 - 数据包驱动）
@@ -10,6 +18,9 @@ import org.apache.logging.log4j.Logger;
 public class GameStateManager {
 
     private final Logger logger;
+
+    // 真实玩家列表（从S3EPacketTeams中记录，用于过滤NPC）
+    private final Set<String> realPlayers = new HashSet<>();
 
     // ========== 游戏状态 ==========
     private GameState currentState = GameState.IDLE;
@@ -23,6 +34,9 @@ public class GameStateManager {
     // ========== 状态锁定机制（防止数据包抖动） ==========
     private long stateLockedUntil = 0;
     private static final long STATE_LOCK_DURATION = 3000; // 游戏开始后3秒内锁定状态
+
+
+
 
     public enum GameState {
         IDLE,           // 空闲状态（不在游戏中）
@@ -45,6 +59,11 @@ public class GameStateManager {
             logger.debug("[IGNORED] Duplicate game start signal");
             return;
         }
+
+        Collection<NetworkPlayerInfo> playerInfoList = MurderHelperMod.mc.getNetHandler().getPlayerInfoMap();
+        List<String> currentGamePlayers = playerInfoList.stream().map(info -> info.getGameProfile().getName()).distinct().collect(Collectors.toList());
+
+        addRealPlayers(currentGamePlayers);
 
         currentState = GameState.PLAYING;
         gameStartTime = System.currentTimeMillis();
@@ -88,6 +107,63 @@ public class GameStateManager {
 
         logger.info("=== GAME DATA RESET ===");
     }
+
+    /**
+     * 清空真实玩家列表
+     */
+    private void clearRealPlayers() {
+        if (!realPlayers.isEmpty()) {
+            logger.info("[RealPlayers] Clearing {} players", realPlayers.size());
+            realPlayers.clear();
+        }
+    }
+
+    /**
+     * 添加真实玩家到列表
+     *
+     * @param players 玩家名字集合
+     */
+    public void addRealPlayers(Collection<String> players) {
+        if (players == null || players.isEmpty()) {
+            return;
+        }
+
+        int sizeBefore = realPlayers.size();
+        realPlayers.addAll(players);
+        int sizeAfter = realPlayers.size();
+
+        if (sizeAfter > sizeBefore) {
+            logger.info("[RealPlayers] Added {} new players, total: {}",
+                    sizeAfter - sizeBefore, sizeAfter);
+        }
+    }
+
+    /**
+     * 从真实玩家列表中移除玩家（用于尸体检测）
+     *
+     * @param playerName 玩家名字
+     */
+    public void removeRealPlayer(String playerName) {
+        if (realPlayers.remove(playerName)) {
+            logger.info("[RealPlayers] Removed player: {} (marked as corpse), remaining: {}",
+                    playerName, realPlayers.size());
+        }
+    }
+
+    /**
+     * 检查玩家是否是真实玩家（不是NPC）
+     *
+     * @param playerName 玩家名字
+     * @return 是否是真实玩家
+     */
+    public boolean isRealPlayer(String playerName) {
+        return realPlayers.contains(playerName);
+    }
+
+    public boolean isRealPlayer(EntityPlayer player) {
+        return isRealPlayer(player.getName());
+    }
+
 
     // ==================== 状态查询 ====================
 
@@ -186,6 +262,7 @@ public class GameStateManager {
      */
     public void reset() {
         onGameReset();
+        clearRealPlayers();
         logger.info("GameStateManager fully reset!");
     }
 

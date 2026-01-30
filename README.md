@@ -230,6 +230,7 @@ src/main/java/me/dev7125/murderhelper/
 │   ├── AlarmSystem.java
 │   └── ShoutMessageBuilder.java
 ├── game/                 # Game state and detection
+│   ├── BowDropDetector.java
 │   ├── BowShotDetector.java
 │   ├── CorpseDetector.java
 │   ├── GameStateManager.java
@@ -241,10 +242,11 @@ src/main/java/me/dev7125/murderhelper/
 │   ├── ConfigGUI.java
 │   └── ModGuiFactory.java
 ├── handler/              # Event handlers
-│   ├── BowDropTracker.java
-│   ├── HUDHandler.java
-│   └── RenderHandler.java
+│   ├── BowDropRenderHandler.java
+│   ├── HUDRenderHandler.java
+│   └── NameTagsRenderHandler.java
 ├── mixins/               # Mixin implementations
+│   ├── MixinRenderManager.java
 │   └── MixinRendererLivingEntity.java
 ├── render/               # Rendering components
 │   ├── BowDropRenderer.java
@@ -338,7 +340,26 @@ The mod includes an in-game configuration GUI accessible through the Minecraft M
 
 ## Version History
 
-### Latest Version
+### v2.0.0 (Latest)
+
+#### Features
+- ✨ **Automatic Role Detection**: Removed manual role slot configuration - now auto-detects player role
+- ✨ **Packet-Based Bow Drop Detection**: Rewritten from tick-based entity polling to server packet interception
+- ✨ **Instant Detective Inheritance**: New detective is locked immediately upon bow pickup, no equip required
+- ✨ **Enhanced Hitbox Rendering**: Completely rewritten F3+B player hitbox with distinctive blue outline
+
+#### Bug Fixes
+- 🐛 Fixed trap kill false positives - players near trap-killed corpses no longer marked as suspects
+- 🐛 Fixed Kali cursed iron sword misidentification as murder weapon
+- 🐛 Fixed NPC nametag rendering issue
+- 🐛 Fixed duplicate nametag rendering for winner clones after game victory
+
+#### Improvements
+- ⚡ HUD now correctly displays Shooter's role item (normal bow) instead of current held item
+- ⚡ Optimized packet-based detection for better performance and accuracy
+
+### v1.0.0
+
 - ✨ Refactored game state detection with packet-based system
 - ✨ Implemented advanced weapon detection with zero false positives
 - ✨ Added comprehensive role detection (Murderer, Detective, Shooter, Suspect, Innocent)

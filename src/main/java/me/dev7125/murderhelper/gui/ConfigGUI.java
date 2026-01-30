@@ -1,7 +1,7 @@
 package me.dev7125.murderhelper.gui;
 
 import me.dev7125.murderhelper.MurderHelperMod;
-import me.dev7125.murderhelper.handler.BowDropTracker;
+import me.dev7125.murderhelper.handler.BowDropRenderHandler;
 import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
@@ -20,7 +20,8 @@ public class ConfigGUI extends GuiScreen {
     private static final int ENEMY_HUD = 3;
     private static final int BOW_ESP = 4;
     private static final int ALARM = 5;
-    private static final int ROLE_SLOT_INDEX = 6;
+    private static final int ENHANCED_HITBOXES = 6;
+    private static final int SUSPECT_DETECTION = 13;
     private static final int SHOUT_MURDERER_TOGGLE = 7;
     private static final int EXPAND_MURDERER = 8;
     private static final int SHOUT_DROP_BOW_TOGGLE = 9;
@@ -43,7 +44,8 @@ public class ConfigGUI extends GuiScreen {
     private GuiButton enemyHudButton;
     private GuiButton bowESPButton;
     private GuiButton alarmButton;
-    private GuiButton roleSlotIndexButton;
+    private GuiButton enhancedHitboxesButton;
+    private GuiButton suspectDetectionButton;
     private GuiButton shoutMurdererToggleButton;
     private GuiButton expandMurdererButton;
     private GuiButton shoutDropBowToggleButton;
@@ -93,14 +95,20 @@ public class ConfigGUI extends GuiScreen {
         this.buttonList.add(bowESPButton);
         currentY += spacing;
 
-        // 4. Alarm | Role Slot Index (两个按钮)
-        alarmButton = new GuiButton(ALARM, centerX - fullWidth/2, currentY, halfWidth, buttonHeight,
+        // 4. Enhanced Hitboxes | Suspect Detection (两个按钮)
+        enhancedHitboxesButton = new GuiButton(ENHANCED_HITBOXES, centerX - fullWidth/2, currentY, halfWidth, buttonHeight,
+                "Enhanced Hitboxes: " + getToggleText(MurderHelperMod.config.enhancedHitboxes));
+        this.buttonList.add(enhancedHitboxesButton);
+
+        suspectDetectionButton = new GuiButton(SUSPECT_DETECTION, centerX - fullWidth/2 + halfWidth + 10, currentY, halfWidth, buttonHeight,
+                "Suspect Detection: " + getToggleText(MurderHelperMod.config.suspectDetection));
+        this.buttonList.add(suspectDetectionButton);
+        currentY += spacing;
+
+        // 5. Alarm (全宽)
+        alarmButton = new GuiButton(ALARM, centerX - fullWidth/2, currentY, fullWidth, buttonHeight,
                 "Alarm: " + getToggleText(MurderHelperMod.config.murderAlarm));
         this.buttonList.add(alarmButton);
-
-        roleSlotIndexButton = new GuiButton(ROLE_SLOT_INDEX, centerX - fullWidth/2 + halfWidth + 10, currentY, halfWidth, buttonHeight,
-                "Role Slot: " + (MurderHelperMod.config.roleSlotIndex + 1));
-        this.buttonList.add(roleSlotIndexButton);
         currentY += spacing;
 
         // 5. Shout Murderer 和 ... 按钮
@@ -209,7 +217,7 @@ public class ConfigGUI extends GuiScreen {
 
             case BOW_ESP:
                 MurderHelperMod.config.bowDropESPEnabled = !MurderHelperMod.config.bowDropESPEnabled;
-                BowDropTracker.enabled = MurderHelperMod.config.bowDropESPEnabled;
+                BowDropRenderHandler.enabled = MurderHelperMod.config.bowDropESPEnabled;
                 button.displayString = "Bow ESP: " + getToggleText(MurderHelperMod.config.bowDropESPEnabled);
                 break;
 
@@ -218,11 +226,14 @@ public class ConfigGUI extends GuiScreen {
                 button.displayString = "Alarm: " + getToggleText(MurderHelperMod.config.murderAlarm);
                 break;
 
-            case ROLE_SLOT_INDEX:
-                int currentDisplay = MurderHelperMod.config.roleSlotIndex + 1;
-                currentDisplay = currentDisplay % 9 + 1;
-                MurderHelperMod.config.roleSlotIndex = currentDisplay - 1;
-                button.displayString = "Role Slot: " + currentDisplay;
+            case ENHANCED_HITBOXES:
+                MurderHelperMod.config.enhancedHitboxes = !MurderHelperMod.config.enhancedHitboxes;
+                button.displayString = "Enhanced Hitboxes: " + getToggleText(MurderHelperMod.config.enhancedHitboxes);
+                break;
+
+            case SUSPECT_DETECTION:
+                MurderHelperMod.config.suspectDetection = !MurderHelperMod.config.suspectDetection;
+                button.displayString = "Suspect Detection: " + getToggleText(MurderHelperMod.config.suspectDetection);
                 break;
 
             case SHOUT_MURDERER_TOGGLE:
@@ -372,8 +383,14 @@ public class ConfigGUI extends GuiScreen {
             case ALARM:
                 return Arrays.asList("When the distance to murder is less than",
                         "or equal to 50 blocks, an alarm will sound");
-            case ROLE_SLOT_INDEX:
-                return Arrays.asList("Set the hotbar slot for role detection (1-9)");
+            case ENHANCED_HITBOXES:
+                return Arrays.asList("Toggle enhanced hitbox rendering",
+                        "ON: Bold blue outline (Mixin override)",
+                        "OFF: Vanilla white outline");
+            case SUSPECT_DETECTION:
+                return Arrays.asList("Toggle automatic suspect detection",
+                        "When enabled, players near corpses",
+                        "will be marked as suspects");
             case SHOUT_MURDERER_TOGGLE:
                 return Arrays.asList("Detected a murderer and automatically",
                         "sends a template message in chat");

@@ -52,9 +52,8 @@ public class MixinRendererLivingEntity {
         }
 
         // 第四步：检查玩家是否在Tab列表中（过滤NPC和死亡玩家）
-        if (!MurderHelperMod.isPlayerInTabList(player)) {
-            // 不在Tab列表中，取消渲染
-            ci.cancel();
+        if (!MurderHelperMod.gameState.isRealPlayer(player)) {
+            // 不在真实玩家列表中，让原版继续渲染（不取消）
             return;
         }
 

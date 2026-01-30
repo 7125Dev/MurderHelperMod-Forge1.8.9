@@ -68,7 +68,7 @@ public class AlarmSystem {
             if (player == mc.thePlayer) continue;
             
             // 只检查在Tab列表中的玩家
-            if (!MurderHelperMod.isPlayerInTabList(player)) continue;
+            if (!MurderHelperMod.gameState.isRealPlayer(player)) continue;
             
             // 检查是否是敌人
             if (MurderHelperMod.isEnemy(player.getName())) {

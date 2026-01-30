@@ -142,17 +142,17 @@ public class NametagRenderer {
     }
 
     /**
-     * 获取命名牌文本（包含嫌疑人标记）
+     * 获取命名牌文本(包含嫌疑人标记)
      *
      * @param player 玩家实体
      * @return 命名牌文本
      */
-    private static String getNametagText(EntityPlayer player) {
+    public static String getNametagText(EntityPlayer player) {
         String baseName = player.getName();
 
-        // 检查是否是嫌疑人
-        if (MurderHelperMod.suspectTracker != null &&
-                MurderHelperMod.suspectTracker.isSuspect(player)) {
+        // 检查是否是嫌疑人(现在通过RoleDetector查询)
+        if (MurderHelperMod.roleDetector != null &&
+                MurderHelperMod.roleDetector.isSuspect(player)) {
             return baseName + " §e[Suspect]";
         }
 
@@ -163,30 +163,29 @@ public class NametagRenderer {
      * 根据角色获取命名牌颜色
      *
      * @param player 玩家实体
-     * @return 颜色值（ARGB格式）
+     * @return 颜色值(ARGB格式)
      */
     public static int getNametagColor(EntityPlayer player) {
-        // 先检查是否是嫌疑人（优先级高于普通角色颜色）
-        if (MurderHelperMod.suspectTracker != null &&
-                MurderHelperMod.suspectTracker.isSuspect(player)) {
-            return 0xFFFFAA00; // 嫌疑人 - 橙色（介于红色和黄色之间）
+        // 先检查是否是嫌疑人(优先级高于普通角色颜色)
+        if (MurderHelperMod.roleDetector != null &&
+                MurderHelperMod.roleDetector.isSuspect(player)) {
+            return 0xFFFFAA00; // 嫌疑人 - 橙色(介于红色和黄色之间)
         }
 
         MurderHelperMod.PlayerRole role = MurderHelperMod.getPlayerRole(player);
-
         switch (role) {
             case MURDERER:
                 return 0xFFFF5555; // 杀手 - 红色
-
             case DETECTIVE:
                 return 0xFF55FFFF; // 侦探 - 青蓝
-
             case SHOOTER:
                 return 0xFF55AAFF; // 射手 - 亮蓝
-
+            case SUSPECT:
+                return 0xFFFFAA00; // 嫌疑人 - 橙色
             case INNOCENT:
             default:
                 return 0xFF55FF55; // 平民 - 绿色
         }
     }
+
 }

@@ -18,6 +18,9 @@ public class PlayerTracker {
     // 玩家角色映射
     private Map<String, MurderHelperMod.PlayerRole> playerRoles = new HashMap<>();
 
+    // 旧的玩家角色，用于凶手被锁定后恢复其他玩家之前的角色
+    private Map<String, MurderHelperMod.PlayerRole> oldPlayerRoles = new HashMap<>();
+
     // 已锁定的凶手列表（一旦确认为凶手，整场游戏都是凶手）
     private Set<String> lockedMurderers = new HashSet<>();
 
@@ -35,6 +38,16 @@ public class PlayerTracker {
     public void updatePlayerRole(String playerName, MurderHelperMod.PlayerRole role) {
         if (role == null) {
             return;
+        }
+
+        // 如果要设置为嫌疑人，先记录当前角色（用于凶手锁定后回滚）
+        if (role == MurderHelperMod.PlayerRole.SUSPECT) {
+            if (!oldPlayerRoles.containsKey(playerName)) {
+                MurderHelperMod.PlayerRole currentRole = playerRoles.getOrDefault(playerName, MurderHelperMod.PlayerRole.INNOCENT);
+                oldPlayerRoles.put(playerName, currentRole);
+            }
+        } else if (!oldPlayerRoles.containsKey(playerName)) {
+            oldPlayerRoles.put(playerName, role);
         }
 
         playerRoles.put(playerName, role);
@@ -183,6 +196,7 @@ public class PlayerTracker {
      */
     public void reset() {
         playerRoles.clear();
+        oldPlayerRoles.clear();
         lockedMurderers.clear();
         lockedDetectives.clear();
         playerWeapons.clear();
@@ -210,5 +224,14 @@ public class PlayerTracker {
      */
     public int getLockedDetectiveCount() {
         return lockedDetectives.size();
+    }
+
+    public void rollbackPlayerRole() {
+        oldPlayerRoles.forEach((playerName, role) -> {
+            if (!lockedMurderers.contains(playerName)) {
+                playerRoles.put(playerName, role);
+            }
+        });
+        MurderHelperMod.logger.info("rollbackPlayerRole====== " + playerRoles);
     }
 }

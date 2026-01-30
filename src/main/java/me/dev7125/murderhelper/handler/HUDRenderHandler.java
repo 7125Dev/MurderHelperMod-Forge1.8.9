@@ -16,7 +16,7 @@ import org.lwjgl.input.Mouse;
 /**
  * HUD处理器 - 负责渲染和管理敌人信息窗口
  */
-public class HUDHandler {
+public class HUDRenderHandler {
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private final MurderMysteryHUD hud;
@@ -24,7 +24,7 @@ public class HUDHandler {
     // 鼠标状态追踪（用于检测点击）
     private boolean lastMousePressed = false;
 
-    public HUDHandler(KnifeThrownDetector weaponDetector, BowShotDetector bowShotDetector) {
+    public HUDRenderHandler(KnifeThrownDetector weaponDetector, BowShotDetector bowShotDetector) {
         this.hud = new MurderMysteryHUD(weaponDetector, bowShotDetector);
     }
 
@@ -129,7 +129,7 @@ public class HUDHandler {
             }
 
             // 只检查在Tab列表中的玩家（过滤NPC和死亡玩家）
-            if (!MurderHelperMod.isPlayerInTabList(player)) {
+            if (!MurderHelperMod.gameState.isRealPlayer(player)) {
                 continue;
             }
 
