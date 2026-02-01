@@ -376,3 +376,13 @@ The mod includes an in-game configuration GUI accessible through the Minecraft M
 
 Happy modding!
 ```
+
+<img width="1069" height="598" alt="image" src="https://github.com/user-attachments/assets/c76ad51c-268e-4f1f-a2e9-673bb6ac5267" />
+<img width="1069" height="598" alt="image" src="https://github.com/user-attachments/assets/5f29b4eb-868a-4d5e-bb6a-b6278fb101f1" />
+<img width="1069" height="598" alt="image" src="https://github.com/user-attachments/assets/aecb93a4-0a93-4799-8938-5dfecc6295ee" />
+<img width="1069" height="598" alt="image" src="https://github.com/user-attachments/assets/b7f31a61-8be5-4d97-8e16-e13493024f7f" />
+<img width="1069" height="598" alt="image" src="https://github.com/user-attachments/assets/5c817f56-51c2-44e3-ae8f-1c501efe5ed9" />
+
+
+
+
